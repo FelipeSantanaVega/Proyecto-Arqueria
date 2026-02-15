@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="Viernes">
+  <circle cx="24" cy="24" r="20" fill="currentColor"/>
+  <text x="24" y="24" text-anchor="middle" dominant-baseline="central"
+        font-family="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif"
+        font-size="20" font-weight="700" fill="#fff">V</text>
+</svg>

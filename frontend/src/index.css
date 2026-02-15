@@ -1,0 +1,21 @@
+:root {
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  background-color: #f7fafc;
+  color: #1a202c;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: #f7fafc;
+}
+
+#root {
+  min-height: 100vh;
+}
