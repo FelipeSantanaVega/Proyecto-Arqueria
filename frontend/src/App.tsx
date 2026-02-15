@@ -114,6 +114,7 @@ type Routine = {
   name: string;
   description?: string | null;
   is_active: boolean;
+  is_template?: boolean;
   days: RoutineDay[];
 };
 
@@ -171,6 +172,7 @@ function App() {
   const [expandedExercise, setExpandedExercise] = useState<number | null>(null);
   const [expandedStudent, setExpandedStudent] = useState<number | null>(null);
   const [expandedRoutine, setExpandedRoutine] = useState<number | null>(null);
+  const [expandedActiveAssignment, setExpandedActiveAssignment] = useState<number | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editExercise, setEditExercise] = useState<Exercise | null>(null);
   const [editName, setEditName] = useState("");
@@ -181,13 +183,24 @@ function App() {
   const [editError, setEditError] = useState<string | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createRoutineModalOpen, setCreateRoutineModalOpen] = useState(false);
-  const [routineModalStep, setRoutineModalStep] = useState<0 | 1 | 2>(0);
+  const [routineModalStep, setRoutineModalStep] = useState<0 | 1 | 2 | 3>(0);
   const [editingRoutineId, setEditingRoutineId] = useState<number | null>(null);
   const [routineName, setRoutineName] = useState("");
   const [routineSelectedDays, setRoutineSelectedDays] = useState<string[]>([]);
   const [routineDayCursor, setRoutineDayCursor] = useState(0);
   const [routineExercisesByDay, setRoutineExercisesByDay] = useState<Record<string, number[]>>({});
   const [routineExerciseSearch, setRoutineExerciseSearch] = useState("");
+  const [routineCreateExerciseOverridesByDay, setRoutineCreateExerciseOverridesByDay] = useState<
+    Record<string, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>>
+  >({});
+  const [routineCreateAddExerciseModalOpen, setRoutineCreateAddExerciseModalOpen] = useState(false);
+  const [routineCreateAddExerciseDayKey, setRoutineCreateAddExerciseDayKey] = useState<string | null>(null);
+  const [routineCreateAddExerciseSearch, setRoutineCreateAddExerciseSearch] = useState("");
+  const [routineCreateEditExerciseModalOpen, setRoutineCreateEditExerciseModalOpen] = useState(false);
+  const [routineCreateEditTarget, setRoutineCreateEditTarget] = useState<{ dayKey: string; exerciseId: number } | null>(null);
+  const [routineCreateEditArrows, setRoutineCreateEditArrows] = useState<number | "">("");
+  const [routineCreateEditDistance, setRoutineCreateEditDistance] = useState<number | "">("");
+  const [routineCreateEditDescription, setRoutineCreateEditDescription] = useState("");
   const [routineModalBodyHeight, setRoutineModalBodyHeight] = useState<number | null>(null);
   const [createRoutineLoading, setCreateRoutineLoading] = useState(false);
   const [createRoutineError, setCreateRoutineError] = useState<string | null>(null);
@@ -210,12 +223,23 @@ function App() {
   } | null>(null);
   const [routineAssignStudentId, setRoutineAssignStudentId] = useState<number | null>(null);
   const [routineAssignExistingOverrides, setRoutineAssignExistingOverrides] = useState<Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>>({});
+  const [routineAssignAddedExercisesByDay, setRoutineAssignAddedExercisesByDay] = useState<Record<number, number[]>>({});
+  const [addExerciseDayModalOpen, setAddExerciseDayModalOpen] = useState(false);
+  const [addExerciseTargetDayId, setAddExerciseTargetDayId] = useState<number | null>(null);
+  const [addExerciseSearch, setAddExerciseSearch] = useState("");
   const [editAssignExerciseModalOpen, setEditAssignExerciseModalOpen] = useState(false);
   const [editAssignExerciseId, setEditAssignExerciseId] = useState<number | null>(null);
+  const [editAssignTemporaryTarget, setEditAssignTemporaryTarget] = useState<{ dayId: number; exerciseId: number } | null>(null);
+  const [routineAssignAddedExerciseOverridesByDay, setRoutineAssignAddedExerciseOverridesByDay] = useState<
+    Record<number, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>>
+  >({});
   const [editAssignArrows, setEditAssignArrows] = useState<number | "">("");
   const [editAssignDistance, setEditAssignDistance] = useState<number | "">("");
   const [editAssignDescription, setEditAssignDescription] = useState("");
   const routineStepRef = useRef<HTMLDivElement | null>(null);
+  const addExerciseListRef = useRef<HTMLDivElement | null>(null);
+  const routineSummaryListRef = useRef<HTMLDivElement | null>(null);
+  const routineCreateAddExerciseListRef = useRef<HTMLDivElement | null>(null);
   const [createName, setCreateName] = useState("");
   const [createArrows, setCreateArrows] = useState<number | "">("");
   const [createDistance, setCreateDistance] = useState<number | "">("");
@@ -235,6 +259,9 @@ function App() {
   const [studentFullName, setStudentFullName] = useState("");
   const [exerciseSearch, setExerciseSearch] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
+  const [adminAssignModalOpen, setAdminAssignModalOpen] = useState(false);
+  const [adminAssignSearch, setAdminAssignSearch] = useState("");
+  const [adminAssignSelectedStudentId, setAdminAssignSelectedStudentId] = useState<number | null>(null);
   const [studentDocumentNumber, setStudentDocumentNumber] = useState("");
   const [studentContact, setStudentContact] = useState("");
   const [studentBowPounds, setStudentBowPounds] = useState<number | "">("");
@@ -555,9 +582,13 @@ function App() {
     }
   };
 
+  const templateRoutines = useMemo(
+    () => routines.filter((routine) => routine.is_template !== false),
+    [routines],
+  );
   const stats = useMemo(
-    () => ({ exercises: exercises.length, routines: routines.length, students: students.length }),
-    [exercises, routines, students],
+    () => ({ exercises: exercises.length, routines: templateRoutines.length, students: students.length }),
+    [exercises, templateRoutines.length, students],
   );
   const filteredStudents = useMemo(() => {
     const term = studentSearch.trim().toLowerCase();
@@ -580,6 +611,16 @@ function App() {
   );
   const activeStudents = useMemo(() => sortedStudents.filter((s) => s.is_active), [sortedStudents]);
   const inactiveStudents = useMemo(() => sortedStudents.filter((s) => !s.is_active), [sortedStudents]);
+  const adminAssignableStudents = useMemo(() => {
+    const term = adminAssignSearch.trim().toLowerCase();
+    if (!term) return activeStudents;
+    return activeStudents.filter((student) => {
+      const byName = student.full_name.toLowerCase().includes(term);
+      const byDoc = student.document_number.toLowerCase().includes(term);
+      const byContact = (student.contact || "").toLowerCase().includes(term);
+      return byName || byDoc || byContact;
+    });
+  }, [activeStudents, adminAssignSearch]);
   const studentNameById = useMemo(() => new Map(students.map((s) => [s.id, s.full_name])), [students]);
   const routineNameById = useMemo(() => new Map(routines.map((r) => [r.id, r.name])), [routines]);
   const activeAssignments = useMemo(
@@ -620,11 +661,13 @@ function App() {
   const exerciseNameById = useMemo(() => new Map(exercises.map((ex) => [ex.id, ex.name])), [exercises]);
   const exerciseArrowsById = useMemo(() => new Map(exercises.map((ex) => [ex.id, ex.arrows_count])), [exercises]);
   const sortedRoutines = useMemo(
-    () => [...routines].sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" })),
-    [routines],
+    () => [...templateRoutines].sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" })),
+    [templateRoutines],
   );
   const routineModalMaxW = routineModalStep === 0 ? "520px" : routineModalStep === 1 ? "640px" : "760px";
-  const routineModalMinHeight = routineModalStep === 0 ? 205 : routineModalStep === 1 ? 220 : 260;
+  const routineModalMinHeight = routineModalStep === 0 ? 205 : routineModalStep === 1 ? 220 : routineModalStep === 2 ? 260 : 320;
+  const actionIconButtonSize = { base: "xs", xl: "sm", "2xl": "md" } as const;
+  const actionIconSize = "15px";
   const filteredRoutineExercises = useMemo(() => {
     const term = routineExerciseSearch.trim().toLowerCase();
     if (!term) return exercises;
@@ -646,10 +689,12 @@ function App() {
     routineSelectedDays.length,
     routineDayCursor,
     routineExerciseSearch,
+    routineCreateAddExerciseSearch,
     filteredRoutineExercises.length,
     currentRoutineDayKey,
     routineModalMinHeight,
     routineExercisesByDay,
+    routineCreateExerciseOverridesByDay,
   ]);
 
   useEffect(() => {
@@ -684,6 +729,20 @@ function App() {
 
   const getRoutineWeekArrows = (routine: Routine) => routine.days.reduce((sum, day) => sum + getRoutineDayArrows(day), 0);
 
+  const openAdminAssignModal = () => {
+    setAdminAssignSearch("");
+    setAdminAssignSelectedStudentId(null);
+    setAdminAssignModalOpen(true);
+  };
+
+  const handleAdminAssignContinue = () => {
+    if (!adminAssignSelectedStudentId) return;
+    const student = students.find((value) => value.id === adminAssignSelectedStudentId && value.is_active);
+    if (!student) return;
+    setAdminAssignModalOpen(false);
+    openAssignRoutineModal(student);
+  };
+
   const openAssignRoutineModal = (student: Student) => {
     const existingActive = assignments
       .filter((a) => a.student_id === student.id && a.status === "active")
@@ -702,6 +761,7 @@ function App() {
     setAssignRoutineError(null);
     setAssignRoutineLoading(false);
     setRoutineAssignExistingOverrides({});
+    setRoutineAssignAddedExerciseOverridesByDay({});
     setAssignRoutineModalOpen(true);
   };
 
@@ -713,6 +773,14 @@ function App() {
     setAssignRoutineError(null);
     setAssignRoutineLoading(false);
     setRoutineAssignExistingOverrides({});
+    setRoutineAssignAddedExercisesByDay({});
+    setRoutineAssignAddedExerciseOverridesByDay({});
+    setAddExerciseDayModalOpen(false);
+    setAddExerciseTargetDayId(null);
+    setAddExerciseSearch("");
+    setEditAssignExerciseId(null);
+    setEditAssignTemporaryTarget(null);
+    setEditAssignExerciseModalOpen(false);
     setReplaceAssignError(null);
   };
 
@@ -734,6 +802,7 @@ function App() {
       setAssignRoutineError(null);
       setAssignRoutineLoading(false);
       setRoutineAssignExistingOverrides({});
+      setRoutineAssignAddedExerciseOverridesByDay({});
       setAssignRoutineModalOpen(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al reemplazar la rutina activa";
@@ -787,6 +856,15 @@ function App() {
     setRoutineDayCursor(0);
     setRoutineExercisesByDay({});
     setRoutineExerciseSearch("");
+    setRoutineCreateExerciseOverridesByDay({});
+    setRoutineCreateAddExerciseModalOpen(false);
+    setRoutineCreateAddExerciseDayKey(null);
+    setRoutineCreateAddExerciseSearch("");
+    setRoutineCreateEditExerciseModalOpen(false);
+    setRoutineCreateEditTarget(null);
+    setRoutineCreateEditArrows("");
+    setRoutineCreateEditDistance("");
+    setRoutineCreateEditDescription("");
     setRoutineModalBodyHeight(null);
     setCreateRoutineError(null);
     setRoutineModalStep(0);
@@ -800,6 +878,15 @@ function App() {
     setRoutineDayCursor(0);
     setRoutineExercisesByDay({});
     setRoutineExerciseSearch("");
+    setRoutineCreateExerciseOverridesByDay({});
+    setRoutineCreateAddExerciseModalOpen(false);
+    setRoutineCreateAddExerciseDayKey(null);
+    setRoutineCreateAddExerciseSearch("");
+    setRoutineCreateEditExerciseModalOpen(false);
+    setRoutineCreateEditTarget(null);
+    setRoutineCreateEditArrows("");
+    setRoutineCreateEditDistance("");
+    setRoutineCreateEditDescription("");
     setRoutineModalBodyHeight(null);
     setCreateRoutineError(null);
     setCreateRoutineLoading(false);
@@ -813,19 +900,42 @@ function App() {
       .map((day) => routineDayOptions.find((option) => option.dayNumber === day.day_number)?.key || null)
       .filter((key): key is string => key !== null);
     const exercisesByDay: Record<string, number[]> = {};
+    const overridesByDay: Record<string, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
     for (const day of sortedDays) {
       const key = routineDayOptions.find((option) => option.dayNumber === day.day_number)?.key;
       if (!key) continue;
       exercisesByDay[key] = [...day.exercises]
         .sort((a, b) => a.sort_order - b.sort_order)
         .map((exercise) => exercise.exercise_id);
+      for (const exercise of day.exercises) {
+        const hasOverride =
+          exercise.arrows_override !== null ||
+          exercise.distance_override_m !== null ||
+          (exercise.notes || "").trim() !== "";
+        if (!hasOverride) continue;
+        overridesByDay[key] = overridesByDay[key] || {};
+        overridesByDay[key][exercise.exercise_id] = {
+          arrows_override: exercise.arrows_override,
+          distance_override_m: exercise.distance_override_m,
+          description_override: exercise.notes || null,
+        };
+      }
     }
     setEditingRoutineId(routine.id);
     setRoutineName(routine.name);
     setRoutineSelectedDays(selectedKeys);
     setRoutineExercisesByDay(exercisesByDay);
+    setRoutineCreateExerciseOverridesByDay(overridesByDay);
     setRoutineDayCursor(0);
     setRoutineExerciseSearch("");
+    setRoutineCreateAddExerciseModalOpen(false);
+    setRoutineCreateAddExerciseDayKey(null);
+    setRoutineCreateAddExerciseSearch("");
+    setRoutineCreateEditExerciseModalOpen(false);
+    setRoutineCreateEditTarget(null);
+    setRoutineCreateEditArrows("");
+    setRoutineCreateEditDistance("");
+    setRoutineCreateEditDescription("");
     setRoutineModalBodyHeight(null);
     setCreateRoutineError(null);
     setCreateRoutineLoading(false);
@@ -854,10 +964,6 @@ function App() {
   };
 
   const handleRoutineExerciseContinue = async () => {
-    if (!token) {
-      setCreateRoutineError("Sesión inválida.");
-      return;
-    }
     if (!currentRoutineDayKey) return;
     const selectedForDay = routineExercisesByDay[currentRoutineDayKey] || [];
     if (selectedForDay.length === 0) {
@@ -870,6 +976,15 @@ function App() {
       setCreateRoutineError(null);
       return;
     }
+    setCreateRoutineError(null);
+    setRoutineModalStep(3);
+  };
+
+  const handleCreateOrUpdateRoutineFromSummary = async () => {
+    if (!token) {
+      setCreateRoutineError("Sesión inválida.");
+      return;
+    }
     try {
       setCreateRoutineLoading(true);
       setCreateRoutineError(null);
@@ -877,12 +992,20 @@ function App() {
         name: routineName.trim(),
         description: null,
         is_active: true,
+        is_template: editingRoutineId
+          ? (routines.find((routine) => routine.id === editingRoutineId)?.is_template ?? true)
+          : routineAssignStudentId
+            ? false
+            : true,
         days: orderedSelectedRoutineDays.map((day) => ({
           day_number: day.dayNumber,
           name: day.label,
           exercises: (routineExercisesByDay[day.key] || []).map((exerciseId, idx) => ({
             exercise_id: exerciseId,
             sort_order: idx + 1,
+            arrows_override: routineCreateExerciseOverridesByDay[day.key]?.[exerciseId]?.arrows_override ?? null,
+            distance_override_m: routineCreateExerciseOverridesByDay[day.key]?.[exerciseId]?.distance_override_m ?? null,
+            notes: routineCreateExerciseOverridesByDay[day.key]?.[exerciseId]?.description_override ?? null,
           })),
         })),
       };
@@ -923,11 +1046,102 @@ function App() {
     }
   };
 
+  const openRoutineCreateAddExercise = (dayKey: string) => {
+    setRoutineCreateAddExerciseDayKey(dayKey);
+    setRoutineCreateAddExerciseSearch("");
+    setRoutineCreateAddExerciseModalOpen(true);
+  };
+
+  const addExerciseToRoutineSummaryDay = (dayKey: string, exerciseId: number) => {
+    setRoutineExercisesByDay((prev) => {
+      const current = prev[dayKey] || [];
+      if (current.includes(exerciseId)) return prev;
+      return { ...prev, [dayKey]: [...current, exerciseId] };
+    });
+    setRoutineCreateAddExerciseModalOpen(false);
+    setRoutineCreateAddExerciseDayKey(null);
+    setRoutineCreateAddExerciseSearch("");
+  };
+
+  const openRoutineCreateEditExercise = (dayKey: string, exerciseId: number) => {
+    const base = exercises.find((ex) => ex.id === exerciseId);
+    const override = routineCreateExerciseOverridesByDay[dayKey]?.[exerciseId];
+    setRoutineCreateEditTarget({ dayKey, exerciseId });
+    setRoutineCreateEditArrows(override?.arrows_override ?? base?.arrows_count ?? "");
+    setRoutineCreateEditDistance(override?.distance_override_m ?? Number(base?.distance_m ?? 0) ?? "");
+    setRoutineCreateEditDescription(override?.description_override ?? base?.description ?? "");
+    setRoutineCreateEditExerciseModalOpen(true);
+  };
+
+  const saveRoutineCreateEditExercise = () => {
+    if (!routineCreateEditTarget) return;
+    setRoutineCreateExerciseOverridesByDay((prev) => ({
+      ...prev,
+      [routineCreateEditTarget.dayKey]: {
+        ...(prev[routineCreateEditTarget.dayKey] || {}),
+        [routineCreateEditTarget.exerciseId]: {
+          arrows_override: routineCreateEditArrows === "" ? null : Number(routineCreateEditArrows),
+          distance_override_m: routineCreateEditDistance === "" ? null : Number(routineCreateEditDistance),
+          description_override: routineCreateEditDescription || null,
+        },
+      },
+    }));
+    setRoutineCreateEditExerciseModalOpen(false);
+    setRoutineCreateEditTarget(null);
+  };
+
+  const removeExerciseFromRoutineSummaryDay = (dayKey: string, exerciseId: number) => {
+    setRoutineExercisesByDay((prev) => {
+      const current = prev[dayKey] || [];
+      return { ...prev, [dayKey]: current.filter((id) => id !== exerciseId) };
+    });
+    setRoutineCreateExerciseOverridesByDay((prev) => {
+      const dayOverrides = prev[dayKey] || {};
+      if (!(exerciseId in dayOverrides)) return prev;
+      const nextDayOverrides = { ...dayOverrides };
+      delete nextDayOverrides[exerciseId];
+      return { ...prev, [dayKey]: nextDayOverrides };
+    });
+  };
+
+  const handleRoutineSummaryWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const node = routineSummaryListRef.current;
+    if (!node) return;
+    node.scrollTop += e.deltaY;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleRoutineCreateAddExerciseListWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const node = routineCreateAddExerciseListRef.current;
+    if (!node) return;
+    node.scrollTop += e.deltaY;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   const handleChooseCreateRoutineForStudent = () => {
     if (!assignRoutineStudent) return;
     setRoutineAssignStudentId(assignRoutineStudent.id);
-    closeAssignRoutineModal();
+    setAssignRoutineModalOpen(false);
+    setAssignRoutineStep("choice");
+    setSelectedRoutineToAssign(null);
+    setAssignRoutineError(null);
+    setAssignRoutineLoading(false);
+    setRoutineAssignExistingOverrides({});
+    setRoutineAssignAddedExercisesByDay({});
+    setRoutineAssignAddedExerciseOverridesByDay({});
     openCreateRoutineModal();
+  };
+
+  const handleBackToAssignOptionsFromCreate = () => {
+    if (!assignRoutineStudent) return;
+    closeCreateRoutineModal();
+    setAssignRoutineStep("choice");
+    setSelectedRoutineToAssign(null);
+    setAssignRoutineError(null);
+    setAssignRoutineLoading(false);
+    setAssignRoutineModalOpen(true);
   };
 
   const handleChooseExistingRoutineList = () => {
@@ -935,6 +1149,8 @@ function App() {
     setSelectedRoutineToAssign(null);
     setAssignRoutineError(null);
     setRoutineAssignExistingOverrides({});
+    setRoutineAssignAddedExercisesByDay({});
+    setRoutineAssignAddedExerciseOverridesByDay({});
   };
 
   const tryCreateAssignment = async (payload: {
@@ -977,30 +1193,90 @@ function App() {
     setAssignRoutineStep("existing_preview");
     setAssignRoutineError(null);
     setRoutineAssignExistingOverrides({});
+    setRoutineAssignAddedExercisesByDay({});
+    setRoutineAssignAddedExerciseOverridesByDay({});
   };
 
   const openEditAssignExercise = (dayExercise: RoutineDayExercise) => {
     const base = exercises.find((ex) => ex.id === dayExercise.exercise_id);
     const override = routineAssignExistingOverrides[dayExercise.id];
     setEditAssignExerciseId(dayExercise.id);
+    setEditAssignTemporaryTarget(null);
     setEditAssignArrows(override?.arrows_override ?? dayExercise.arrows_override ?? base?.arrows_count ?? "");
     setEditAssignDistance(override?.distance_override_m ?? dayExercise.distance_override_m ?? Number(base?.distance_m ?? 0) ?? "");
     setEditAssignDescription(override?.description_override ?? base?.description ?? "");
     setEditAssignExerciseModalOpen(true);
   };
 
+  const openEditAssignAddedExercise = (dayId: number, exerciseId: number) => {
+    const base = exercises.find((ex) => ex.id === exerciseId);
+    const override = routineAssignAddedExerciseOverridesByDay[dayId]?.[exerciseId];
+    setEditAssignExerciseId(null);
+    setEditAssignTemporaryTarget({ dayId, exerciseId });
+    setEditAssignArrows(override?.arrows_override ?? base?.arrows_count ?? "");
+    setEditAssignDistance(override?.distance_override_m ?? Number(base?.distance_m ?? 0) ?? "");
+    setEditAssignDescription(override?.description_override ?? base?.description ?? "");
+    setEditAssignExerciseModalOpen(true);
+  };
+
+  const openAddExerciseForDay = (dayId: number) => {
+    setAddExerciseTargetDayId(dayId);
+    setAddExerciseSearch("");
+    setAddExerciseDayModalOpen(true);
+  };
+
+  const addTemporaryExerciseToDay = (dayId: number, exerciseId: number) => {
+    if (!selectedRoutineToAssign) return;
+    const targetDay = selectedRoutineToAssign.days.find((day) => day.id === dayId);
+    if (!targetDay) return;
+    const alreadyInDay = targetDay.exercises.some((dayExercise) => dayExercise.exercise_id === exerciseId);
+    if (alreadyInDay) return;
+    setRoutineAssignAddedExercisesByDay((prev) => {
+      const current = prev[dayId] || [];
+      if (current.includes(exerciseId)) return prev;
+      return { ...prev, [dayId]: [...current, exerciseId] };
+    });
+    setAddExerciseDayModalOpen(false);
+    setAddExerciseTargetDayId(null);
+    setAddExerciseSearch("");
+  };
+
+  const handleAddExerciseListWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const node = addExerciseListRef.current;
+    if (!node) return;
+    node.scrollTop += e.deltaY;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   const saveEditAssignExercise = () => {
-    if (!editAssignExerciseId) return;
-    setRoutineAssignExistingOverrides((prev) => ({
-      ...prev,
-      [editAssignExerciseId]: {
-        arrows_override: editAssignArrows === "" ? null : Number(editAssignArrows),
-        distance_override_m: editAssignDistance === "" ? null : Number(editAssignDistance),
-        description_override: editAssignDescription || null,
-      },
-    }));
+    if (editAssignExerciseId) {
+      setRoutineAssignExistingOverrides((prev) => ({
+        ...prev,
+        [editAssignExerciseId]: {
+          arrows_override: editAssignArrows === "" ? null : Number(editAssignArrows),
+          distance_override_m: editAssignDistance === "" ? null : Number(editAssignDistance),
+          description_override: editAssignDescription || null,
+        },
+      }));
+    } else if (editAssignTemporaryTarget) {
+      setRoutineAssignAddedExerciseOverridesByDay((prev) => ({
+        ...prev,
+        [editAssignTemporaryTarget.dayId]: {
+          ...(prev[editAssignTemporaryTarget.dayId] || {}),
+          [editAssignTemporaryTarget.exerciseId]: {
+            arrows_override: editAssignArrows === "" ? null : Number(editAssignArrows),
+            distance_override_m: editAssignDistance === "" ? null : Number(editAssignDistance),
+            description_override: editAssignDescription || null,
+          },
+        },
+      }));
+    } else {
+      return;
+    }
     setEditAssignExerciseModalOpen(false);
     setEditAssignExerciseId(null);
+    setEditAssignTemporaryTarget(null);
   };
 
   const handleAssignExistingRoutine = async () => {
@@ -1015,7 +1291,11 @@ function App() {
         start_date: week.start,
         end_date: week.end,
         status: "active",
-        notes: JSON.stringify({ temporary_overrides: routineAssignExistingOverrides }),
+        notes: JSON.stringify({
+          temporary_overrides: routineAssignExistingOverrides,
+          temporary_added_exercises_by_day: routineAssignAddedExercisesByDay,
+          temporary_added_exercise_overrides_by_day: routineAssignAddedExerciseOverridesByDay,
+        }),
       });
       if (ok) closeAssignRoutineModal();
     } catch (err) {
@@ -1198,20 +1478,20 @@ function App() {
   if (view === "professor") {
     return (
       <>
-        <Grid templateColumns={{ base: "1fr", md: "220px 1fr" }} minH="100vh" bg="white">
+        <Grid templateColumns={{ base: "1fr", md: "154px 1fr", xl: "192px 1fr", "2xl": "230px 1fr" }} minH="100vh" bg="white">
           <GridItem
             borderRight={{ base: "none", md: "1px solid" }}
             borderColor="rgba(0,0,0,0.08)"
             boxShadow={{ base: "none", md: "2px 0 8px rgba(0,0,0,0.06)" }}
-            p={6}
+            p={{ base: 5, md: 6, xl: 8, "2xl": 10 }}
             position={{ base: "static", md: "sticky" }}
             top={{ base: "auto", md: 0 }}
             h={{ base: "auto", md: "100vh" }}
             alignSelf="start"
             overflowY={{ base: "visible", md: "auto" }}
           >
-            <Stack spacing={4} h="full">
-              <Heading size="md" color="gray.900">
+            <Stack spacing={{ base: 4, xl: 5 }} h="full">
+              <Heading size="md" color="gray.900" fontSize={{ xl: "xl", "2xl": "2xl" }}>
                 Panel profesor
               </Heading>
               <Text
@@ -1231,6 +1511,13 @@ function App() {
               <Text color={profSection === "alumno" ? "black" : "gray.700"} fontWeight={profSection === "alumno" ? "bold" : "normal"} cursor="pointer" onClick={() => setProfSection("alumno")}>
                 Alumnos
               </Text>
+              <Stack spacing={3}>
+                {userRole === "admin" && (
+                  <Button variant="outline" onClick={() => setView("dashboard")}>
+                    Ver conexiones
+                  </Button>
+                )}
+              </Stack>
               <Box flex="1" />
               <HStack justify="space-between" align="center" w="full">
                 <Text color={profSection === "perfil" ? "black" : "gray.700"} fontWeight={profSection === "perfil" ? "bold" : "normal"} cursor="pointer" onClick={() => setProfSection("perfil")}>
@@ -1238,7 +1525,7 @@ function App() {
                 </Text>
                 <Button
                   variant="ghost"
-                  size="sm"
+                  size={{ base: "sm", xl: "md", "2xl": "lg" }}
                   minW="auto"
                   p={1}
                   color="gray.700"
@@ -1263,75 +1550,150 @@ function App() {
                   </Box>
                 </Button>
               </HStack>
-              <Divider />
-              <Stack spacing={3}>
-                {userRole === "admin" && (
-                  <Button variant="outline" onClick={() => setView("dashboard")}>
-                    Ver conexiones
-                  </Button>
-                )}
-              </Stack>
             </Stack>
           </GridItem>
-          <GridItem pl={{ base: 6, md: 10 }} pr={{ base: 0, md: 0 }} py={{ base: 6, md: 10 }} display="flex" alignItems="flex-start" justifyContent="flex-start" w="full">
-            <Stack spacing={4} w="full">
+          <GridItem pl={{ base: 6, md: 10, xl: 14, "2xl": 18 }} pr={{ base: 0, md: 0, xl: 4, "2xl": 8 }} py={{ base: 6, md: 10, xl: 12, "2xl": 14 }} display="flex" alignItems="flex-start" justifyContent="flex-start" w="full" fontSize={{ base: "sm", xl: "md", "2xl": "lg" }}>
+            <Stack spacing={{ base: 4, xl: 6 }} w="full">
               {profSection === "administrar_rutinas" && (
                 <Stack spacing={6}>
-                  <Heading size="lg">Administrar rutinas</Heading>
-                  <Stack spacing={3}>
+                  <Heading size="lg" ml={{ base: 0, md: "10%" }}>
+                    Rutinas activas
+                  </Heading>
+                  <HStack align="flex-start" spacing={8} justify="space-between" w="full">
+                    <Stack spacing={3} flex="1">
                     {activeAssignments.map((assignment) => (
-                      <Box key={assignment.id} p={4} borderWidth="1px" borderRadius="lg" bg="white" shadow="sm">
-                        <HStack justify="space-between" align="start">
-                          <Stack spacing={1}>
-                            <Text fontWeight="bold" color="gray.900">
-                              {routineNameById.get(assignment.routine_id) || `Rutina #${assignment.routine_id}`}
-                            </Text>
-                            <Text color="gray.600" fontSize="sm">
-                              Alumno: {studentNameById.get(assignment.student_id) || `Alumno #${assignment.student_id}`}
-                            </Text>
-                            <Text color="gray.500" fontSize="xs">
-                              Semana: {formatDateEs(assignment.start_date)} a {formatDateEs(assignment.end_date)}
-                            </Text>
-                          </Stack>
-                          <HStack spacing={2}>
-                            <Badge colorScheme="green">Activa</Badge>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              borderRadius="xl"
-                              borderColor="gray.300"
-                              color="black"
-                              _hover={{ bg: "red.700", borderColor: "red.800", color: "white" }}
-                              onClick={() => {
-                                setDeleteAssignedRoutineError(null);
-                                setDeleteAssignedRoutineTarget(assignment);
-                                setDeleteAssignedRoutineModalOpen(true);
-                              }}
-                            >
-                              <Box
-                                as="svg"
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 24 24"
-                                boxSize="16px"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M10 11v6" />
-                                <path d="M14 11v6" />
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                                <path d="M3 6h18" />
-                                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                              </Box>
-                            </Button>
-                          </HStack>
-                        </HStack>
+                      <Box
+                        key={assignment.id}
+                        p={{ base: 4, xl: 5 }}
+                        w={{ base: "100%", md: "75%" }}
+                        ml={{ base: 0, md: "10%" }}
+                        borderWidth="1px"
+                        borderRadius="lg"
+                        bg="white"
+                        shadow="sm"
+                        _hover={{ borderColor: "gray.400", cursor: "pointer" }}
+                        onClick={() => setExpandedActiveAssignment((prev) => (prev === assignment.id ? null : assignment.id))}
+                      >
+                        {(() => {
+                          const routine = routines.find((r) => r.id === assignment.routine_id);
+                          const orderedDays = routine ? [...routine.days].sort((a, b) => a.day_number - b.day_number) : [];
+                          return (
+                            <Stack spacing={2}>
+                              <HStack justify="space-between" align="start">
+                                <Stack spacing={0.5}>
+                                  <Heading size="md" color="gray.900" fontSize={{ base: "lg", xl: "xl", "2xl": "2xl" }}>
+                                    {studentNameById.get(assignment.student_id) || `Alumno #${assignment.student_id}`}
+                                  </Heading>
+                                  <Text color="gray.600" fontSize="sm">
+                                    {routineNameById.get(assignment.routine_id) || `Rutina #${assignment.routine_id}`}
+                                  </Text>
+                                  <Text color="gray.500" fontSize="xs">
+                                    Semana: {formatDateEs(assignment.start_date)} a {formatDateEs(assignment.end_date)}
+                                  </Text>
+                                </Stack>
+                                <Badge colorScheme="green">Activa</Badge>
+                              </HStack>
+                              <Collapse in={expandedActiveAssignment === assignment.id} animateOpacity>
+                                <Stack spacing={3} pt={2}>
+                                  {orderedDays.map((day) => (
+                                    <Box key={day.id}>
+                                      <Text color="gray.700" fontWeight="medium">
+                                        {day.name || formatDay(day)}
+                                      </Text>
+                                      <Stack as="ul" spacing={0.5} mt={1} pl={5}>
+                                        {day.exercises.map((dayExercise) => (
+                                          <Text as="li" key={dayExercise.id} fontSize="sm" color="gray.500">
+                                            {exerciseNameById.get(dayExercise.exercise_id) || `Ejercicio #${dayExercise.exercise_id}`}
+                                          </Text>
+                                        ))}
+                                        {!day.exercises.length && (
+                                          <Text as="li" fontSize="sm" color="gray.500">
+                                            Sin ejercicios
+                                          </Text>
+                                        )}
+                                      </Stack>
+                                    </Box>
+                                  ))}
+                                  {!routine && <Text color="gray.500">No se encontró la rutina asociada.</Text>}
+                                  <HStack justify="flex-end" pt={2}>
+                                    <Button
+                                      size={actionIconButtonSize}
+                                      variant="outline"
+                                      borderRadius="xl"
+                                      borderColor="gray.300"
+                                      color="black"
+                                      _hover={{ bg: "red.700", borderColor: "red.800", color: "white" }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDeleteAssignedRoutineError(null);
+                                        setDeleteAssignedRoutineTarget(assignment);
+                                        setDeleteAssignedRoutineModalOpen(true);
+                                      }}
+                                    >
+                                      <Box
+                                        as="svg"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        boxSize="16px"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      >
+                                        <path d="M10 11v6" />
+                                        <path d="M14 11v6" />
+                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                                        <path d="M3 6h18" />
+                                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                      </Box>
+                                    </Button>
+                                  </HStack>
+                                </Stack>
+                              </Collapse>
+                            </Stack>
+                          );
+                        })()}
                       </Box>
                     ))}
-                    {!activeAssignments.length && <Text color="gray.600">No hay rutinas activas asignadas.</Text>}
-                  </Stack>
+                      {!activeAssignments.length && (
+                        <Text color="gray.600" ml={{ base: 0, md: "10%" }}>
+                          No hay rutinas activas asignadas.
+                        </Text>
+                      )}
+                    </Stack>
+                    <Stack flex={{ base: "0 0 160px", xl: "0 0 220px", "2xl": "0 0 260px" }} pt={2} ml="auto" mr={{ base: "50px", xl: "70px", "2xl": "90px" }} spacing={3}>
+                      <Button
+                        variant="outline"
+                        borderColor="gray.300"
+                        borderRadius="lg"
+                        color="gray.800"
+                        _hover={{ borderColor: "gray.500" }}
+                        onClick={openAdminAssignModal}
+                        w="full"
+                      >
+                        <HStack justify="center" spacing={2}>
+                          <Box
+                            as="svg"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            boxSize="18px"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+                            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                            <path d="M9 14h6" />
+                            <path d="M12 17v-6" />
+                          </Box>
+                          <Text>Asignar rutina</Text>
+                        </HStack>
+                      </Button>
+                    </Stack>
+                  </HStack>
                 </Stack>
               )}
               {profSection === "rutina" && (
@@ -1345,7 +1707,9 @@ function App() {
                         return (
                           <Box
                             key={routine.id}
-                            p={4}
+                            p={{ base: 4, xl: 5 }}
+                            w={{ base: "100%", md: "75%" }}
+                            ml={{ base: 0, md: "10%" }}
                             borderWidth="1px"
                             borderRadius="lg"
                             borderColor="gray.200"
@@ -1357,7 +1721,7 @@ function App() {
                             <HStack align="flex-start" spacing={4}>
                               <Stack spacing={1.5} flex="1 1 70%">
                                 <HStack justify="space-between" align="flex-start" w="full" spacing={4}>
-                                  <Heading size="md" color="gray.900">
+                                  <Heading size="md" color="gray.900" fontSize={{ base: "lg", xl: "xl", "2xl": "2xl" }}>
                                     {routine.name}
                                   </Heading>
                                   <Text color="gray.500" fontSize="sm" whiteSpace="nowrap">
@@ -1395,20 +1759,20 @@ function App() {
                                       </Box>
                                     ))}
                                     <HStack spacing={2} pt={2}>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        borderRadius="xl"
-                                        borderColor="gray.300"
+                                    <Button
+                                      size={actionIconButtonSize}
+                                      variant="outline"
+                                      borderRadius="xl"
+                                      borderColor="gray.300"
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           openEditRoutineModal(routine);
                                         }}
                                       >
-                                        <Image src={editIconUrl} alt="Editar" boxSize="16px" />
+                                        <Image src={editIconUrl} alt="Editar" boxSize={actionIconSize} />
                                       </Button>
                                       <Button
-                                        size="sm"
+                                        size={actionIconButtonSize}
                                         variant="outline"
                                         borderRadius="xl"
                                         borderColor="gray.300"
@@ -1425,7 +1789,7 @@ function App() {
                                           as="svg"
                                           xmlns="http://www.w3.org/2000/svg"
                                           viewBox="0 0 24 24"
-                                          boxSize="16px"
+                                          boxSize={actionIconSize}
                                           fill="none"
                                           stroke="currentColor"
                                           strokeWidth="2"
@@ -1449,7 +1813,7 @@ function App() {
                       })}
                       {!sortedRoutines.length && <Text color="gray.600">No hay rutinas para mostrar.</Text>}
                     </Stack>
-                    <Stack flex="0 0 160px" pt={2} ml="auto" mr="50px" spacing={3}>
+                    <Stack flex={{ base: "0 0 160px", xl: "0 0 220px", "2xl": "0 0 260px" }} pt={2} ml="auto" mr={{ base: "50px", xl: "70px", "2xl": "90px" }} spacing={3}>
                       <Button
                         variant="outline"
                         borderColor="gray.300"
@@ -1470,7 +1834,7 @@ function App() {
               )}
               {profSection === "ejercicio" && (
                 <Stack spacing={6}>
-                  <InputGroup maxW="360px">
+                  <InputGroup maxW={{ base: "360px", xl: "480px", "2xl": "560px" }} ml={{ base: 0, md: "10%" }}>
                     <InputLeftElement pointerEvents="none" color="gray.500">
                       <SearchIcon boxSize={3.5} />
                     </InputLeftElement>
@@ -1490,7 +1854,9 @@ function App() {
                       {filteredExercises.map((ex) => (
                         <Box
                           key={ex.id}
-                          p={4}
+                          p={{ base: 4, xl: 5 }}
+                          w={{ base: "100%", md: "75%" }}
+                          ml={{ base: 0, md: "10%" }}
                           borderWidth="1px"
                           borderRadius="lg"
                           borderColor="gray.200"
@@ -1501,7 +1867,7 @@ function App() {
                         >
                           <HStack align="flex-start" spacing={4}>
                             <Stack spacing={2} flex="1 1 70%">
-                              <Heading size="md" color="gray.900">
+                              <Heading size="md" color="gray.900" fontSize={{ base: "lg", xl: "xl", "2xl": "2xl" }}>
                                 {ex.name}
                               </Heading>
                               <Stack spacing={1.5} pt={1}>
@@ -1509,10 +1875,12 @@ function App() {
                                 <Collapse in={expandedExercise === ex.id} animateOpacity>
                                   <Stack spacing={1.5} color="gray.700">
                                     <Text color="gray.500">Distancia: {ex.distance_m} m</Text>
-                                    <Text color="gray.500">Descripción: {ex.description || "Sin descripción"}</Text>
+                                    <Text color="gray.500" fontSize="95%">
+                                      Descripción: {ex.description || "Sin descripción"}
+                                    </Text>
                                     <HStack spacing={2} pt={2}>
                                       <Button
-                                        size="sm"
+                                        size={actionIconButtonSize}
                                         variant="outline"
                                         borderRadius="xl"
                                         borderColor="gray.300"
@@ -1527,10 +1895,10 @@ function App() {
                                           setEditModalOpen(true);
                                         }}
                                       >
-                                        <Image src={editIconUrl} alt="Editar" boxSize="16px" />
+                                        <Image src={editIconUrl} alt="Editar" boxSize={actionIconSize} />
                                       </Button>
                                       <Button
-                                        size="sm"
+                                        size={actionIconButtonSize}
                                         variant="outline"
                                         borderRadius="xl"
                                         borderColor="gray.300"
@@ -1546,7 +1914,7 @@ function App() {
                                           as="svg"
                                           xmlns="http://www.w3.org/2000/svg"
                                           viewBox="0 0 24 24"
-                                          boxSize="16px"
+                                          boxSize={actionIconSize}
                                           fill="none"
                                           stroke="currentColor"
                                           strokeWidth="2"
@@ -1570,7 +1938,7 @@ function App() {
                       ))}
                       {!filteredExercises.length && <Text color="gray.600">No hay ejercicios para mostrar.</Text>}
                     </Stack>
-                    <Stack flex="0 0 160px" pt={2} ml="auto" mr="50px" spacing={3}>
+                    <Stack flex={{ base: "0 0 160px", xl: "0 0 220px", "2xl": "0 0 260px" }} pt={2} ml="auto" mr={{ base: "50px", xl: "70px", "2xl": "90px" }} spacing={3}>
                       <Button
                         variant="outline"
                         borderColor="gray.300"
@@ -1591,7 +1959,7 @@ function App() {
               )}
               {profSection === "alumno" && (
                 <Stack spacing={6}>
-                  <InputGroup maxW="360px">
+                  <InputGroup maxW={{ base: "360px", xl: "480px", "2xl": "560px" }} ml={{ base: 0, md: "10%" }}>
                     <InputLeftElement pointerEvents="none" color="gray.500">
                       <SearchIcon boxSize={3.5} />
                     </InputLeftElement>
@@ -1609,13 +1977,15 @@ function App() {
                   <HStack align="flex-start" spacing={8} justify="space-between" w="full">
                     <Stack spacing={6} flex="1">
                       <Stack spacing={3}>
-                        <Heading size="md" color="black">
+                        <Heading size="md" color="black" ml={{ base: 0, md: "10%" }}>
                           Alumnos activos
                         </Heading>
                         {activeStudents.map((st) => (
                           <Box
                             key={st.id}
-                            p={4}
+                            p={{ base: 4, xl: 5 }}
+                            w={{ base: "100%", md: "75%" }}
+                            ml={{ base: 0, md: "10%" }}
                             borderWidth="1px"
                             borderRadius="lg"
                             borderColor="gray.200"
@@ -1625,7 +1995,7 @@ function App() {
                             onClick={() => setExpandedStudent((prev) => (prev === st.id ? null : st.id))}
                           >
                             <HStack justify="space-between" align="start">
-                              <Heading size="md" color="gray.900" fontWeight="normal">
+                              <Heading size="md" color="gray.900" fontWeight="normal" fontSize={{ base: "lg", xl: "xl", "2xl": "2xl" }}>
                                 {st.full_name}
                               </Heading>
                               <Badge colorScheme="green">Activo</Badge>
@@ -1639,7 +2009,7 @@ function App() {
                                 <HStack justify="space-between" align="center" pt={2}>
                                   <HStack spacing={2}>
                                     <Button
-                                      size="sm"
+                                      size={actionIconButtonSize}
                                       variant="outline"
                                       borderRadius="xl"
                                       borderColor="gray.300"
@@ -1648,10 +2018,10 @@ function App() {
                                         openEditStudentModal(st);
                                       }}
                                     >
-                                      <Image src={editIconUrl} alt="Editar alumno" boxSize="16px" />
+                                      <Image src={editIconUrl} alt="Editar alumno" boxSize={actionIconSize} />
                                     </Button>
                                     <Button
-                                      size="sm"
+                                      size={actionIconButtonSize}
                                       variant="outline"
                                       borderRadius="xl"
                                       borderColor="gray.300"
@@ -1668,7 +2038,7 @@ function App() {
                                         as="svg"
                                         xmlns="http://www.w3.org/2000/svg"
                                         viewBox="0 0 24 24"
-                                        boxSize="16px"
+                                        boxSize={actionIconSize}
                                         fill="none"
                                         stroke="currentColor"
                                         strokeWidth="2"
@@ -1682,7 +2052,7 @@ function App() {
                                     </Button>
                                   </HStack>
                                   <Button
-                                    size="sm"
+                                    size={{ base: "sm", xl: "md", "2xl": "lg" }}
                                     variant="outline"
                                     borderRadius="lg"
                                     borderColor="gray.300"
@@ -1721,17 +2091,19 @@ function App() {
                             </Collapse>
                           </Box>
                         ))}
-                        {!activeStudents.length && <Text color="gray.600">No hay alumnos activos.</Text>}
+                        {!activeStudents.length && <Text color="gray.600" ml={{ base: 0, md: "10%" }}>No hay alumnos activos.</Text>}
                       </Stack>
 
                       <Stack spacing={3}>
-                        <Heading size="md" color="black">
+                        <Heading size="md" color="black" ml={{ base: 0, md: "10%" }}>
                           Alumnos inactivos
                         </Heading>
                         {inactiveStudents.map((st) => (
                           <Box
                             key={st.id}
-                            p={4}
+                            p={{ base: 4, xl: 5 }}
+                            w={{ base: "100%", md: "75%" }}
+                            ml={{ base: 0, md: "10%" }}
                             borderWidth="1px"
                             borderRadius="lg"
                             borderColor="gray.200"
@@ -1741,7 +2113,7 @@ function App() {
                             onClick={() => setExpandedStudent((prev) => (prev === st.id ? null : st.id))}
                           >
                             <HStack justify="space-between" align="start">
-                              <Heading size="md" color="gray.900" fontWeight="normal">
+                              <Heading size="md" color="gray.900" fontWeight="normal" fontSize={{ base: "lg", xl: "xl", "2xl": "2xl" }}>
                                 {st.full_name}
                               </Heading>
                               <Badge colorScheme="red">Inactivo</Badge>
@@ -1755,7 +2127,7 @@ function App() {
                                 <HStack justify="space-between" align="center" pt={2}>
                                   <HStack spacing={2}>
                                     <Button
-                                      size="sm"
+                                      size={actionIconButtonSize}
                                       variant="outline"
                                       borderRadius="xl"
                                       borderColor="gray.300"
@@ -1764,10 +2136,10 @@ function App() {
                                         openEditStudentModal(st);
                                       }}
                                     >
-                                      <Image src={editIconUrl} alt="Editar alumno" boxSize="16px" />
+                                      <Image src={editIconUrl} alt="Editar alumno" boxSize={actionIconSize} />
                                     </Button>
                                     <Button
-                                      size="sm"
+                                      size={actionIconButtonSize}
                                       variant="outline"
                                       borderRadius="xl"
                                       borderColor="gray.300"
@@ -1797,7 +2169,7 @@ function App() {
                                     </Button>
                                   </HStack>
                                   <Button
-                                    size="sm"
+                                    size={{ base: "sm", xl: "md", "2xl": "lg" }}
                                     variant="outline"
                                     borderRadius="lg"
                                     borderColor="gray.300"
@@ -1836,10 +2208,10 @@ function App() {
                             </Collapse>
                           </Box>
                         ))}
-                        {!inactiveStudents.length && <Text color="gray.600">No hay alumnos inactivos.</Text>}
+                        {!inactiveStudents.length && <Text color="gray.600" ml={{ base: 0, md: "10%" }}>No hay alumnos inactivos.</Text>}
                       </Stack>
                     </Stack>
-                    <Stack flex="0 0 160px" pt={2} ml="auto" mr="50px" spacing={3}>
+                    <Stack flex={{ base: "0 0 160px", xl: "0 0 220px", "2xl": "0 0 260px" }} pt={2} ml="auto" mr={{ base: "50px", xl: "70px", "2xl": "90px" }} spacing={3}>
                       <Button
                         variant="outline"
                         borderColor="gray.300"
@@ -1937,7 +2309,7 @@ function App() {
                   _hover={{ bg: "gray.800" }}
                   _active={{ bg: "gray.900" }}
                   isLoading={editLoading}
-                  isDisabled={!editName || !editArrows || !editDistance}
+                  isDisabled={!editName || editArrows === "" || editDistance === ""}
                   onClick={handleEditSave}
                 >
                   Guardar
@@ -2016,7 +2388,7 @@ function App() {
                   _hover={{ bg: "gray.800" }}
                   _active={{ bg: "gray.900" }}
                   isLoading={createLoading}
-                  isDisabled={!createName || !createArrows || !createDistance}
+                  isDisabled={!createName || createArrows === "" || createDistance === ""}
                   onClick={handleCreateSave}
                 >
                   Guardar
@@ -2037,6 +2409,11 @@ function App() {
                     <Input value={routineName} onChange={(e) => setRoutineName(e.target.value)} placeholder="Nombre de rutina" />
                   </FormControl>
                   <HStack spacing={3} justify="flex-end">
+                    {routineAssignStudentId && !editingRoutineId && (
+                      <Button variant="outline" borderColor="gray.300" onClick={handleBackToAssignOptionsFromCreate}>
+                        Volver
+                      </Button>
+                    )}
                     <Button
                       bg="black"
                       color="white"
@@ -2112,7 +2489,7 @@ function App() {
                 {routineModalStep === 2 && (
                   <Stack ref={routineStepRef} key={`${currentRoutineDayKey || "dia"}-${routineDayCursor}`} spacing={4} animation={`${routineDaySlide} 0.3s ease`}>
                   <Heading size="md">{currentRoutineDayLabel || "Día"}</Heading>
-                  <InputGroup maxW="360px">
+                  <InputGroup maxW={{ base: "360px", xl: "480px", "2xl": "560px" }}>
                     <InputLeftElement pointerEvents="none" color="gray.500">
                       <SearchIcon boxSize={3.5} />
                     </InputLeftElement>
@@ -2202,7 +2579,7 @@ function App() {
                       isLoading={createRoutineLoading}
                       onClick={handleRoutineExerciseContinue}
                     >
-                      {routineDayCursor < orderedSelectedRoutineDays.length - 1 ? "Siguiente" : editingRoutineId ? "Guardar cambios" : "Crear rutina"}
+                      {routineDayCursor < orderedSelectedRoutineDays.length - 1 ? "Siguiente" : "Ver resumen"}
                     </Button>
                     <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={closeCreateRoutineModal}>
                       Cancelar
@@ -2210,8 +2587,267 @@ function App() {
                   </HStack>
                   </Stack>
                 )}
+                {routineModalStep === 3 && (
+                  <Stack ref={routineStepRef} spacing={4} animation={`${routineStepSlide} 0.3s ease`}>
+                    <Heading size="md">Resumen de la rutina</Heading>
+                    <Stack
+                      ref={routineSummaryListRef}
+                      spacing={3}
+                      maxH="52vh"
+                      overflowY="auto"
+                      pr={1}
+                      onWheel={handleRoutineSummaryWheel}
+                      sx={{ overscrollBehaviorY: "contain" }}
+                    >
+                      {orderedSelectedRoutineDays.map((day) => (
+                        <Box key={`summary-${day.key}`} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={3}>
+                          <Text color="gray.800" fontWeight="medium">
+                            {day.label}
+                          </Text>
+                          <Stack spacing={1} mt={2}>
+                            {(routineExercisesByDay[day.key] || []).map((exerciseId) => {
+                              const base = exercises.find((ex) => ex.id === exerciseId);
+                              const override = routineCreateExerciseOverridesByDay[day.key]?.[exerciseId];
+                              return (
+                                <HStack key={`summary-ex-${day.key}-${exerciseId}`} spacing={2} align="center">
+                                  <Stack spacing={0} flex="1">
+                                    <Text fontSize="sm" color="gray.700">
+                                      {base?.name || `Ejercicio #${exerciseId}`}
+                                    </Text>
+                                    <Text fontSize="xs" color="gray.500">
+                                      Flechas: {override?.arrows_override ?? base?.arrows_count ?? "-"} | Distancia: {override?.distance_override_m ?? Number(base?.distance_m ?? 0) ?? "-"} m
+                                    </Text>
+                                  </Stack>
+                                  <HStack spacing={1}>
+                                    <Button
+                                      size={actionIconButtonSize}
+                                      variant="ghost"
+                                      minW="auto"
+                                      px={2}
+                                      onClick={() => openRoutineCreateEditExercise(day.key, exerciseId)}
+                                    >
+                                      <Image src={editIconUrl} alt="Editar" boxSize={actionIconSize} />
+                                    </Button>
+                                    <Button
+                                      size={actionIconButtonSize}
+                                      variant="outline"
+                                      borderRadius="xl"
+                                      borderColor="gray.300"
+                                      color="black"
+                                      _hover={{ bg: "red.700", borderColor: "red.800", color: "white" }}
+                                      onClick={() => removeExerciseFromRoutineSummaryDay(day.key, exerciseId)}
+                                    >
+                                      <Box
+                                        as="svg"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        boxSize={actionIconSize}
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      >
+                                        <path d="M10 11v6" />
+                                        <path d="M14 11v6" />
+                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                                        <path d="M3 6h18" />
+                                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                      </Box>
+                                    </Button>
+                                  </HStack>
+                                </HStack>
+                              );
+                            })}
+                            {(routineExercisesByDay[day.key] || []).length === 0 && (
+                              <Text fontSize="sm" color="gray.500">Sin ejercicios</Text>
+                            )}
+                          </Stack>
+                          <Button
+                            mt={3}
+                            size="sm"
+                            variant="outline"
+                            borderColor="gray.300"
+                            borderRadius="lg"
+                            onClick={() => openRoutineCreateAddExercise(day.key)}
+                            leftIcon={
+                              <Box as="svg" viewBox="0 0 24 24" boxSize="16px" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M5 12h14" />
+                                <path d="M12 5v14" />
+                              </Box>
+                            }
+                          >
+                            Agregar ejercicio
+                          </Button>
+                        </Box>
+                      ))}
+                    </Stack>
+                    {createRoutineError && (
+                      <Alert status="error" borderRadius="md">
+                        <AlertIcon />
+                        {createRoutineError}
+                      </Alert>
+                    )}
+                    <HStack spacing={3} justify="flex-end">
+                      <Button
+                        variant="outline"
+                        borderColor="gray.300"
+                        onClick={() => {
+                          setRoutineDayCursor(Math.max(orderedSelectedRoutineDays.length - 1, 0));
+                          setRoutineModalStep(2);
+                        }}
+                      >
+                        Volver
+                      </Button>
+                      <Button
+                        bg="black"
+                        color="white"
+                        _hover={{ bg: "gray.800" }}
+                        _active={{ bg: "gray.900" }}
+                        isLoading={createRoutineLoading}
+                        isDisabled={orderedSelectedRoutineDays.some((day) => (routineExercisesByDay[day.key] || []).length === 0)}
+                        onClick={handleCreateOrUpdateRoutineFromSummary}
+                      >
+                        {editingRoutineId ? "Guardar cambios" : "Crear rutina"}
+                      </Button>
+                      <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={closeCreateRoutineModal}>
+                        Cancelar
+                      </Button>
+                    </HStack>
+                  </Stack>
+                )}
               </Box>
             </Box>
+          </ModalContent>
+        </Modal>
+        <Modal isOpen={routineCreateAddExerciseModalOpen} onClose={() => setRoutineCreateAddExerciseModalOpen(false)} isCentered>
+          <ModalOverlay />
+          <ModalContent maxW="700px">
+            <ModalHeader>Agregar ejercicio al día</ModalHeader>
+            <ModalBody>
+              <Stack spacing={3}>
+                <InputGroup>
+                  <InputLeftElement pointerEvents="none">
+                    <SearchIcon color="gray.500" />
+                  </InputLeftElement>
+                  <Input
+                    placeholder="Buscar ejercicio..."
+                    value={routineCreateAddExerciseSearch}
+                    onChange={(e) => setRoutineCreateAddExerciseSearch(e.target.value)}
+                  />
+                </InputGroup>
+                <Stack
+                  ref={routineCreateAddExerciseListRef}
+                  spacing={2}
+                  maxH="45vh"
+                  overflowY="auto"
+                  pr={1}
+                  onWheel={handleRoutineCreateAddExerciseListWheel}
+                  sx={{ overscrollBehaviorY: "contain" }}
+                >
+                  {exercises
+                    .filter((exercise) => {
+                      const term = routineCreateAddExerciseSearch.trim().toLowerCase();
+                      if (!term) return true;
+                      return (
+                        exercise.name.toLowerCase().includes(term) ||
+                        String(exercise.arrows_count).includes(term) ||
+                        String(exercise.distance_m).includes(term)
+                      );
+                    })
+                    .filter((exercise) => {
+                      if (!routineCreateAddExerciseDayKey) return false;
+                      return !(routineExercisesByDay[routineCreateAddExerciseDayKey] || []).includes(exercise.id);
+                    })
+                    .map((exercise) => (
+                      <HStack key={`create-day-add-${exercise.id}`} justify="space-between" borderWidth="1px" borderColor="gray.200" borderRadius="md" p={2}>
+                        <Stack spacing={0}>
+                          <Text fontSize="sm" color="gray.800">{exercise.name}</Text>
+                          <Text fontSize="xs" color="gray.500">
+                            Flechas: {exercise.arrows_count} | Distancia: {Number(exercise.distance_m)} m
+                          </Text>
+                        </Stack>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          borderColor="gray.300"
+                          onClick={() =>
+                            routineCreateAddExerciseDayKey &&
+                            addExerciseToRoutineSummaryDay(routineCreateAddExerciseDayKey, exercise.id)
+                          }
+                        >
+                          Agregar
+                        </Button>
+                      </HStack>
+                    ))}
+                </Stack>
+              </Stack>
+            </ModalBody>
+            <ModalFooter>
+              <Button variant="ghost" onClick={() => setRoutineCreateAddExerciseModalOpen(false)}>
+                Cancelar
+              </Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+        <Modal
+          isOpen={routineCreateEditExerciseModalOpen}
+          onClose={() => {
+            setRoutineCreateEditExerciseModalOpen(false);
+            setRoutineCreateEditTarget(null);
+          }}
+          isCentered
+        >
+          <ModalOverlay />
+          <ModalContent maxW="700px">
+            <ModalHeader>Editar ejercicio</ModalHeader>
+            <ModalBody>
+              <Stack spacing={3}>
+                <FormControl>
+                  <FormLabel>Flechas</FormLabel>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    min={0}
+                    step={1}
+                    value={routineCreateEditArrows}
+                    onChange={(e) => setRoutineCreateEditArrows(normalizeInt(e.target.value))}
+                    onKeyDown={(e) => blockInvalidKeys(e, false)}
+                    onBeforeInput={handleBeforeInputInt}
+                    onPaste={handlePasteInt}
+                  />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Distancia (m)</FormLabel>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step={0.5}
+                    value={routineCreateEditDistance}
+                    onChange={(e) => setRoutineCreateEditDistance(normalizeFloat(e.target.value))}
+                    onKeyDown={(e) => blockInvalidKeys(e, true)}
+                    onBeforeInput={handleBeforeInputFloat}
+                    onPaste={handlePasteFloat}
+                  />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Descripción</FormLabel>
+                  <Textarea value={routineCreateEditDescription} onChange={(e) => setRoutineCreateEditDescription(e.target.value)} minH="120px" resize="vertical" />
+                </FormControl>
+              </Stack>
+            </ModalBody>
+            <ModalFooter>
+              <HStack spacing={3}>
+                <Button variant="ghost" onClick={() => setRoutineCreateEditExerciseModalOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button bg="black" color="white" _hover={{ bg: "gray.800" }} _active={{ bg: "gray.900" }} onClick={saveRoutineCreateEditExercise}>
+                  Guardar
+                </Button>
+              </HStack>
+            </ModalFooter>
           </ModalContent>
         </Modal>
         <Modal isOpen={createStudentModalOpen} onClose={() => setCreateStudentModalOpen(false)} isCentered>
@@ -2380,6 +3016,95 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
+        <Modal
+          isOpen={adminAssignModalOpen}
+          onClose={() => {
+            setAdminAssignModalOpen(false);
+            setAdminAssignSearch("");
+            setAdminAssignSelectedStudentId(null);
+          }}
+          isCentered
+        >
+          <ModalOverlay />
+          <ModalContent maxW="760px">
+            <ModalHeader>Asignar rutina</ModalHeader>
+            <ModalBody>
+              <Stack spacing={3}>
+                <InputGroup>
+                  <InputLeftElement pointerEvents="none" color="gray.500">
+                    <SearchIcon boxSize={3.5} />
+                  </InputLeftElement>
+                  <Input
+                    value={adminAssignSearch}
+                    onChange={(e) => setAdminAssignSearch(e.target.value)}
+                    placeholder="Buscar alumno activo"
+                  />
+                </InputGroup>
+                <Stack spacing={2} maxH="50vh" overflowY="auto" pr={1}>
+                  {adminAssignableStudents.map((student) => {
+                    const isSelected = adminAssignSelectedStudentId === student.id;
+                    return (
+                      <Box
+                        key={student.id}
+                        p={3}
+                        borderWidth="1px"
+                        borderColor={isSelected ? "black" : "gray.200"}
+                        bg={isSelected ? "gray.50" : "white"}
+                        borderRadius="md"
+                        cursor="pointer"
+                        _hover={{ borderColor: "gray.500" }}
+                        onClick={() => setAdminAssignSelectedStudentId(student.id)}
+                      >
+                        <HStack justify="space-between" align="center">
+                          <Stack spacing={0}>
+                            <Text color="gray.900">{student.full_name}</Text>
+                            <Text color="gray.500" fontSize="xs">
+                              DNI: {student.document_number}
+                            </Text>
+                          </Stack>
+                          {isSelected && (
+                            <Badge colorScheme="green">Seleccionado</Badge>
+                          )}
+                        </HStack>
+                      </Box>
+                    );
+                  })}
+                  {!adminAssignableStudents.length && (
+                    <Text color="gray.600">No hay alumnos activos para asignar.</Text>
+                  )}
+                </Stack>
+              </Stack>
+            </ModalBody>
+            <ModalFooter>
+              <HStack spacing={3}>
+                <Button
+                  bg="black"
+                  color="white"
+                  _hover={{ bg: "gray.800" }}
+                  _active={{ bg: "gray.900" }}
+                  isDisabled={!adminAssignSelectedStudentId}
+                  onClick={handleAdminAssignContinue}
+                >
+                  Continuar
+                </Button>
+                <Button
+                  bg="white"
+                  color="black"
+                  borderColor="gray.300"
+                  borderWidth="1px"
+                  _hover={{ bg: "gray.100" }}
+                  onClick={() => {
+                    setAdminAssignModalOpen(false);
+                    setAdminAssignSearch("");
+                    setAdminAssignSelectedStudentId(null);
+                  }}
+                >
+                  Cancelar
+                </Button>
+              </HStack>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
         <Modal isOpen={assignRoutineModalOpen} onClose={closeAssignRoutineModal} isCentered>
           <ModalOverlay />
           <ModalContent maxW="760px">
@@ -2426,43 +3151,90 @@ function App() {
                 <Stack spacing={3} maxH="55vh" overflowY="auto" pr={1}>
                   {[...selectedRoutineToAssign.days]
                     .sort((a, b) => a.day_number - b.day_number)
-                    .map((day) => (
-                      <Box key={day.id} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={3}>
-                        <Text color="gray.800" fontWeight="medium">
-                          {day.name || formatDay(day)}
-                        </Text>
-                        <Stack spacing={1} mt={2}>
-                          {[...day.exercises]
-                            .sort((a, b) => a.sort_order - b.sort_order)
-                            .map((dayExercise) => {
-                              const base = exercises.find((ex) => ex.id === dayExercise.exercise_id);
-                              const override = routineAssignExistingOverrides[dayExercise.id];
+                    .map((day) => {
+                      const temporaryAdded = (routineAssignAddedExercisesByDay[day.id] || [])
+                        .map((exerciseId) => exercises.find((ex) => ex.id === exerciseId))
+                        .filter((exercise): exercise is Exercise => Boolean(exercise));
+
+                      return (
+                        <Box key={day.id} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={3}>
+                          <Text color="gray.800" fontWeight="medium">
+                            {day.name || formatDay(day)}
+                          </Text>
+                          <Stack spacing={1} mt={2}>
+                            {[...day.exercises]
+                              .sort((a, b) => a.sort_order - b.sort_order)
+                              .map((dayExercise) => {
+                                const base = exercises.find((ex) => ex.id === dayExercise.exercise_id);
+                                const override = routineAssignExistingOverrides[dayExercise.id];
+                                return (
+                                  <HStack key={dayExercise.id} spacing={2} align="center">
+                                    <Stack spacing={0} flex="1">
+                                      <Text fontSize="sm" color="gray.700">
+                                        {base?.name || `Ejercicio #${dayExercise.exercise_id}`}
+                                      </Text>
+                                      <Text fontSize="xs" color="gray.500">
+                                        Flechas: {override?.arrows_override ?? dayExercise.arrows_override ?? base?.arrows_count ?? "-"} | Distancia:{" "}
+                                        {override?.distance_override_m ?? dayExercise.distance_override_m ?? Number(base?.distance_m ?? 0) ?? "-"} m
+                                      </Text>
+                                    </Stack>
+                                    <Button
+                                      size={actionIconButtonSize}
+                                      variant="ghost"
+                                      minW="auto"
+                                      px={2}
+                                      onClick={() => openEditAssignExercise(dayExercise)}
+                                    >
+                                      <Image src={editIconUrl} alt="Editar" boxSize={actionIconSize} />
+                                    </Button>
+                                  </HStack>
+                                );
+                              })}
+
+                            {temporaryAdded.map((tempExercise) => {
+                              const tempOverride = routineAssignAddedExerciseOverridesByDay[day.id]?.[tempExercise.id];
                               return (
-                                <HStack key={dayExercise.id} justify="space-between" align="center">
-                                  <Stack spacing={0}>
-                                    <Text fontSize="sm" color="gray.700">
-                                      {base?.name || `Ejercicio #${dayExercise.exercise_id}`}
-                                    </Text>
-                                    <Text fontSize="xs" color="gray.500">
-                                      Flechas: {override?.arrows_override ?? dayExercise.arrows_override ?? base?.arrows_count ?? "-"} | Distancia:{" "}
-                                      {override?.distance_override_m ?? dayExercise.distance_override_m ?? Number(base?.distance_m ?? 0) ?? "-"} m
-                                    </Text>
-                                  </Stack>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    borderRadius="xl"
-                                    borderColor="gray.300"
-                                    onClick={() => openEditAssignExercise(dayExercise)}
-                                  >
-                                    <Image src={editIconUrl} alt="Editar" boxSize="16px" />
-                                  </Button>
-                                </HStack>
+                              <HStack key={`temp-${day.id}-${tempExercise.id}`} spacing={2} align="center">
+                                <Stack spacing={0} flex="1">
+                                  <Text fontSize="sm" color="gray.700">
+                                    {tempExercise.name}
+                                  </Text>
+                                  <Text fontSize="xs" color="gray.500">
+                                    Flechas: {tempOverride?.arrows_override ?? tempExercise.arrows_count} | Distancia: {tempOverride?.distance_override_m ?? Number(tempExercise.distance_m)} m
+                                  </Text>
+                                </Stack>
+                                <Button
+                                  size={actionIconButtonSize}
+                                  variant="ghost"
+                                  minW="auto"
+                                  px={2}
+                                  onClick={() => openEditAssignAddedExercise(day.id, tempExercise.id)}
+                                >
+                                  <Image src={editIconUrl} alt="Editar" boxSize={actionIconSize} />
+                                </Button>
+                              </HStack>
                               );
                             })}
-                        </Stack>
-                      </Box>
-                    ))}
+                          </Stack>
+                          <Button
+                            mt={3}
+                            size="sm"
+                            variant="outline"
+                            borderColor="gray.300"
+                            borderRadius="lg"
+                            onClick={() => openAddExerciseForDay(day.id)}
+                            leftIcon={
+                              <Box as="svg" viewBox="0 0 24 24" boxSize="16px" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M5 12h14" />
+                                <path d="M12 5v14" />
+                              </Box>
+                            }
+                          >
+                            Agregar ejercicio
+                          </Button>
+                        </Box>
+                      );
+                    })}
                 </Stack>
               )}
               {assignRoutineError && (
@@ -2503,7 +3275,15 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={editAssignExerciseModalOpen} onClose={() => setEditAssignExerciseModalOpen(false)} isCentered>
+        <Modal
+          isOpen={editAssignExerciseModalOpen}
+          onClose={() => {
+            setEditAssignExerciseModalOpen(false);
+            setEditAssignExerciseId(null);
+            setEditAssignTemporaryTarget(null);
+          }}
+          isCentered
+        >
           <ModalOverlay />
           <ModalContent maxW="700px">
             <ModalHeader>Editar ejercicio temporal</ModalHeader>
@@ -2553,6 +3333,77 @@ function App() {
                   Guardar
                 </Button>
               </HStack>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+        <Modal isOpen={addExerciseDayModalOpen} onClose={() => setAddExerciseDayModalOpen(false)} isCentered>
+          <ModalOverlay />
+          <ModalContent maxW="700px">
+            <ModalHeader>Agregar ejercicio al día</ModalHeader>
+            <ModalBody>
+              <Stack spacing={3}>
+                <InputGroup>
+                  <InputLeftElement pointerEvents="none">
+                    <SearchIcon color="gray.500" />
+                  </InputLeftElement>
+                  <Input
+                    placeholder="Buscar ejercicio..."
+                    value={addExerciseSearch}
+                    onChange={(e) => setAddExerciseSearch(e.target.value)}
+                  />
+                </InputGroup>
+                <Stack
+                  ref={addExerciseListRef}
+                  spacing={2}
+                  maxH="45vh"
+                  overflowY="auto"
+                  pr={1}
+                  onWheel={handleAddExerciseListWheel}
+                  sx={{ overscrollBehaviorY: "contain" }}
+                >
+                  {exercises
+                    .filter((exercise) => {
+                      const term = addExerciseSearch.trim().toLowerCase();
+                      if (!term) return true;
+                      return (
+                        exercise.name.toLowerCase().includes(term) ||
+                        String(exercise.arrows_count).includes(term) ||
+                        String(exercise.distance_m).includes(term)
+                      );
+                    })
+                    .filter((exercise) => {
+                      if (!selectedRoutineToAssign || !addExerciseTargetDayId) return false;
+                      const day = selectedRoutineToAssign.days.find((value) => value.id === addExerciseTargetDayId);
+                      if (!day) return false;
+                      const existsInRoutine = day.exercises.some((item) => item.exercise_id === exercise.id);
+                      const existsInTemporary = (routineAssignAddedExercisesByDay[addExerciseTargetDayId] || []).includes(exercise.id);
+                      return !existsInRoutine && !existsInTemporary;
+                    })
+                    .map((exercise) => (
+                      <HStack key={`add-day-ex-${exercise.id}`} justify="space-between" borderWidth="1px" borderColor="gray.200" borderRadius="md" p={2}>
+                        <Stack spacing={0}>
+                          <Text fontSize="sm" color="gray.800">{exercise.name}</Text>
+                          <Text fontSize="xs" color="gray.500">
+                            Flechas: {exercise.arrows_count} | Distancia: {Number(exercise.distance_m)} m
+                          </Text>
+                        </Stack>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          borderColor="gray.300"
+                          onClick={() => addExerciseTargetDayId && addTemporaryExerciseToDay(addExerciseTargetDayId, exercise.id)}
+                        >
+                          Agregar
+                        </Button>
+                      </HStack>
+                    ))}
+                </Stack>
+              </Stack>
+            </ModalBody>
+            <ModalFooter>
+              <Button variant="ghost" onClick={() => setAddExerciseDayModalOpen(false)}>
+                Cancelar
+              </Button>
             </ModalFooter>
           </ModalContent>
         </Modal>
@@ -2905,9 +3756,9 @@ function App() {
               <Heading size="md">Ejercicios</Heading>
               <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
                 {exercises.map((ex) => (
-                  <Box key={ex.id} p={4} borderWidth="1px" borderRadius="lg" bg="white" shadow="sm">
+                  <Box key={ex.id} p={{ base: 4, xl: 5 }} borderWidth="1px" borderRadius="lg" bg="white" shadow="sm">
                     <HStack justify="space-between" mb={2}>
-                      <Heading size="sm">{ex.name}</Heading>
+                      <Heading size={{ base: "sm", xl: "md", "2xl": "lg" }}>{ex.name}</Heading>
                       <Badge colorScheme={ex.is_active ? "green" : "gray"}>{ex.is_active ? "Activo" : "Inactivo"}</Badge>
                     </HStack>
                     <Text fontSize="sm" color="gray.600">{ex.description || "Sin Descripción"}</Text>
@@ -2918,7 +3769,7 @@ function App() {
                   </Box>
                 ))}
                 {!exercises.length && !loading && (
-                  <Box p={4} borderWidth="1px" borderRadius="lg" bg="white">
+                  <Box p={{ base: 4, xl: 5 }} borderWidth="1px" borderRadius="lg" bg="white">
                     <Text color="gray.600">Sin ejercicios cargados.</Text>
                   </Box>
                 )}
@@ -2928,10 +3779,10 @@ function App() {
             <Stack spacing={6}>
               <Heading size="md">Rutinas semanales</Heading>
               <Stack spacing={4}>
-                {routines.map((routine) => (
+                {templateRoutines.map((routine) => (
                   <Box key={routine.id} p={5} borderWidth="1px" borderRadius="lg" bg="white" shadow="sm">
                     <HStack justify="space-between" mb={2}>
-                      <Heading size="sm">{routine.name}</Heading>
+                      <Heading size={{ base: "sm", xl: "md", "2xl": "lg" }}>{routine.name}</Heading>
                       <Badge colorScheme={routine.is_active ? "green" : "gray"}>{routine.is_active ? "Activa" : "Inactiva"}</Badge>
                     </HStack>
                     {routine.description && (
@@ -2952,8 +3803,8 @@ function App() {
                               <HStack key={dex.id} spacing={2} align="center">
                                 <Badge colorScheme="purple">Ej {dex.exercise_id}</Badge>
                                 <Text fontSize="sm">Orden {dex.sort_order}</Text>
-                                {dex.arrows_override && <Tag colorScheme="orange">{dex.arrows_override} flechas</Tag>}
-                                {dex.distance_override_m && <Tag colorScheme="teal">{dex.distance_override_m} m</Tag>}
+                                {dex.arrows_override !== null && dex.arrows_override !== undefined && <Tag colorScheme="orange">{dex.arrows_override} flechas</Tag>}
+                                {dex.distance_override_m !== null && dex.distance_override_m !== undefined && <Tag colorScheme="teal">{dex.distance_override_m} m</Tag>}
                               </HStack>
                             ))}
                             {!day.exercises.length && <Text fontSize="sm" color="gray.500">Sin ejercicios en este Día.</Text>}
@@ -2969,8 +3820,8 @@ function App() {
                     </Stack>
                   </Box>
                 ))}
-                {!routines.length && !loading && (
-                  <Box p={4} borderWidth="1px" borderRadius="lg" bg="white">
+                {!templateRoutines.length && !loading && (
+                  <Box p={{ base: 4, xl: 5 }} borderWidth="1px" borderRadius="lg" bg="white">
                     <Text color="gray.600">Sin rutinas cargadas.</Text>
                   </Box>
                 )}
@@ -2978,10 +3829,10 @@ function App() {
             </Stack>
 
             <Stack spacing={6}>
-              <Heading size="md">Administrar rutinas</Heading>
+              <Heading size="md">Rutinas activas</Heading>
               <Stack spacing={3}>
                 {activeAssignments.map((assignment) => (
-                  <Box key={assignment.id} p={4} borderWidth="1px" borderRadius="lg" bg="white" shadow="sm">
+                  <Box key={assignment.id} p={{ base: 4, xl: 5 }} borderWidth="1px" borderRadius="lg" bg="white" shadow="sm">
                     <HStack justify="space-between" align="start">
                       <Stack spacing={1}>
                         <Text fontWeight="bold" color="gray.900">
@@ -2994,45 +3845,45 @@ function App() {
                           Semana: {formatDateEs(assignment.start_date)} a {formatDateEs(assignment.end_date)}
                         </Text>
                       </Stack>
-                      <HStack spacing={2}>
-                        <Badge colorScheme="green">Activa</Badge>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          borderRadius="xl"
-                          borderColor="gray.300"
-                          color="black"
-                          _hover={{ bg: "red.700", borderColor: "red.800", color: "white" }}
-                          onClick={() => {
-                            setDeleteAssignedRoutineError(null);
-                            setDeleteAssignedRoutineTarget(assignment);
-                            setDeleteAssignedRoutineModalOpen(true);
-                          }}
+                      <Badge colorScheme="green">Activa</Badge>
+                    </HStack>
+                    <HStack justify="flex-end" pt={1}>
+                      <Button
+                        size={actionIconButtonSize}
+                        variant="outline"
+                        borderRadius="xl"
+                        borderColor="gray.300"
+                        color="black"
+                        _hover={{ bg: "red.700", borderColor: "red.800", color: "white" }}
+                        onClick={() => {
+                          setDeleteAssignedRoutineError(null);
+                          setDeleteAssignedRoutineTarget(assignment);
+                          setDeleteAssignedRoutineModalOpen(true);
+                        }}
+                      >
+                        <Box
+                          as="svg"
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          boxSize={actionIconSize}
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
                         >
-                          <Box
-                            as="svg"
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            boxSize="16px"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M10 11v6" />
-                            <path d="M14 11v6" />
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                            <path d="M3 6h18" />
-                            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                          </Box>
-                        </Button>
-                      </HStack>
+                          <path d="M10 11v6" />
+                          <path d="M14 11v6" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                          <path d="M3 6h18" />
+                          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </Box>
+                      </Button>
                     </HStack>
                   </Box>
                 ))}
                 {!activeAssignments.length && !loading && (
-                  <Box p={4} borderWidth="1px" borderRadius="lg" bg="white">
+                  <Box p={{ base: 4, xl: 5 }} borderWidth="1px" borderRadius="lg" bg="white">
                     <Text color="gray.600">No hay rutinas activas asignadas.</Text>
                   </Box>
                 )}
@@ -3054,7 +3905,7 @@ type StatCardProps = {
 
 function StatCard({ title, value, helper, icon }: StatCardProps) {
   return (
-    <Box p={4} borderWidth="1px" borderRadius="lg" bg="white" shadow="sm">
+    <Box p={{ base: 4, xl: 5 }} borderWidth="1px" borderRadius="lg" bg="white" shadow="sm">
       <HStack justify="space-between" mb={2}>
         <Text fontSize="sm" color="gray.500">
           {title}
@@ -3072,6 +3923,11 @@ function StatCard({ title, value, helper, icon }: StatCardProps) {
 }
 
 export default App;
+
+
+
+
+
 
 
 

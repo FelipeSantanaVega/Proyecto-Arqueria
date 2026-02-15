@@ -43,8 +43,8 @@ CREATE TABLE IF NOT EXISTS exercises (
   PRIMARY KEY (id),
   KEY idx_exercises_active (is_active),
   KEY idx_exercises_name (name),
-  CONSTRAINT chk_exercises_arrows_positive CHECK (arrows_count > 0),
-  CONSTRAINT chk_exercises_distance_positive CHECK (distance_m > 0)
+  CONSTRAINT chk_exercises_arrows_positive CHECK (arrows_count >= 0),
+  CONSTRAINT chk_exercises_distance_positive CHECK (distance_m >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------
@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS students (
   bow_pounds DECIMAL(6,2) UNSIGNED NULL,       -- libras del arco
   arrows_available INT UNSIGNED NULL,          -- flechas disponibles
   is_active TINYINT(1) NOT NULL DEFAULT 1,
+  inactive_since DATETIME NULL,                -- fecha desde la que quedó inactivo (auto purge a 30 días)
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -65,6 +66,7 @@ CREATE TABLE IF NOT EXISTS students (
   KEY idx_students_active (is_active),
   KEY idx_students_name (full_name),
   KEY idx_students_active_name (is_active, full_name),
+  KEY idx_students_inactive_since (is_active, inactive_since),
   CONSTRAINT chk_students_document_not_empty CHECK (CHAR_LENGTH(TRIM(document_number)) > 0),
   CONSTRAINT chk_students_bow_positive CHECK (bow_pounds IS NULL OR bow_pounds > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -77,12 +79,14 @@ CREATE TABLE IF NOT EXISTS routines (
   name VARCHAR(120) NOT NULL,
   description TEXT NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
+  is_template TINYINT(1) NOT NULL DEFAULT 1, -- 1=plantilla permanente, 0=rutina temporal para asignación
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_routines_name (name),
   KEY idx_routines_active (is_active),
-  KEY idx_routines_name (name)
+  KEY idx_routines_name (name),
+  KEY idx_routines_template_active (is_template, is_active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------
@@ -138,10 +142,10 @@ CREATE TABLE IF NOT EXISTS routine_day_exercises (
   KEY idx_day_exercises_day (routine_day_id),
   KEY idx_day_exercises_exercise (exercise_id),
   CONSTRAINT chk_day_exercises_arrows_override_positive CHECK (
-    arrows_override IS NULL OR arrows_override > 0
+    arrows_override IS NULL OR arrows_override >= 0
   ),
   CONSTRAINT chk_day_exercises_distance_override_positive CHECK (
-    distance_override_m IS NULL OR distance_override_m > 0
+    distance_override_m IS NULL OR distance_override_m >= 0
   )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..deps import get_db
 from ..models import Routine, RoutineDay, RoutineDayExercise, Exercise
+from ..routine_retention import purge_expired_temporary_routines
 from ..schemas import RoutineCreate, RoutineOut
 from ..security import require_roles
 
@@ -14,6 +15,7 @@ router = APIRouter(prefix="/routines", tags=["routines"])
 
 @router.get("", response_model=list[RoutineOut])
 def list_routines(db: Session = Depends(get_db)):
+    purge_expired_temporary_routines(db)
     stmt = (
         select(Routine)
         .options(
@@ -70,6 +72,7 @@ def create_routine(
         name=payload.name,
         description=payload.description,
         is_active=payload.is_active,
+        is_template=payload.is_template,
     )
 
     for day in sorted(payload.days, key=lambda d: d.day_number):
@@ -148,6 +151,7 @@ def update_routine(
     routine.name = payload.name
     routine.description = payload.description
     routine.is_active = payload.is_active
+    routine.is_template = payload.is_template
     routine.days.clear()
     # Forzar delete de días previos antes de insertar los nuevos para evitar
     # colisiones con la unique (routine_id, day_number) durante el mismo flush.

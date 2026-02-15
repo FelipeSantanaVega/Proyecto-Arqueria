@@ -21,8 +21,8 @@ class LoginResponse(BaseModel):
 # Exercises
 class ExerciseBase(BaseModel):
     name: str
-    arrows_count: conint(gt=0)
-    distance_m: confloat(gt=0)
+    arrows_count: conint(ge=0)
+    distance_m: confloat(ge=0)
     description: Optional[str] = None
     is_active: bool = True
 
@@ -79,8 +79,8 @@ class StudentOut(StudentBase):
 class RoutineDayExerciseCreate(BaseModel):
     exercise_id: int
     sort_order: Optional[int] = Field(default=None, ge=1)
-    arrows_override: Optional[conint(gt=0)] = None
-    distance_override_m: Optional[confloat(gt=0)] = None
+    arrows_override: Optional[conint(ge=0)] = None
+    distance_override_m: Optional[confloat(ge=0)] = None
     notes: Optional[str] = None
 
 
@@ -95,6 +95,7 @@ class RoutineCreate(BaseModel):
     name: str
     description: Optional[str] = None
     is_active: bool = True
+    is_template: bool = True
     days: List[RoutineDayCreate] = Field(default_factory=list)
 
 
@@ -126,6 +127,7 @@ class RoutineOut(BaseModel):
     name: str
     description: Optional[str]
     is_active: bool
+    is_template: bool
     created_at: datetime
     updated_at: datetime
     days: List[RoutineDayOut]

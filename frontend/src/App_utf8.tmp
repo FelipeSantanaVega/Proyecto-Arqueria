@@ -1,0 +1,801 @@
+﻿import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  Alert,
+  AlertIcon,
+  Badge,
+  Box,
+  Button,
+  Collapse,
+  Container,
+  Divider,
+  FormControl,
+  FormLabel,
+  Grid,
+  GridItem,
+  Heading,
+  HStack,
+  Input,
+  Image,
+  Modal,
+  ModalBody,
+  ModalCloseButton,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalOverlay,
+  Textarea,
+  SimpleGrid,
+  Spinner,
+  Stack,
+  Tag,
+  Text,
+  VStack,
+} from "@chakra-ui/react";
+import { CheckCircleIcon, WarningIcon } from "@chakra-ui/icons";
+import bowIconUrl from "./assets/bow.svg";
+import archeryImg from "./assets/Arqueros Andinos logo upscaled.png";
+import trashIconUrl from "./assets/trash.svg";
+import { apiFetch, API_BASE } from "./api";
+
+type Health = {
+  status: string;
+  env: string;
+};
+
+type Exercise = {
+  id: number;
+  name: string;
+  arrows_count: number;
+  distance_m: number;
+  description?: string;
+  is_active: boolean;
+};
+
+type RoutineDayExercise = {
+  id: number;
+  exercise_id: number;
+  sort_order: number;
+  arrows_override?: number | null;
+  distance_override_m?: number | null;
+  notes?: string | null;
+};
+
+type RoutineDay = {
+  id: number;
+  day_number: number;
+  name?: string | null;
+  notes?: string | null;
+  exercises: RoutineDayExercise[];
+};
+
+type Routine = {
+  id: number;
+  name: string;
+  description?: string | null;
+  is_active: boolean;
+  days: RoutineDay[];
+};
+
+function formatDay(day: RoutineDay) {
+  return day.name || `día ${day.day_number}`;
+}
+
+function App() {
+  const [view, setView] = useState<"home" | "dashboard" | "login" | "professor">("home");
+  const [profSection, setProfSection] = useState<"perfil" | "rutina" | "ejercicio">("perfil");
+  const [expandedExercise, setExpandedExercise] = useState<number | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editExercise, setEditExercise] = useState<Exercise | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editArrows, setEditArrows] = useState<number | "">("");
+  const [editDistance, setEditDistance] = useState<number | "">("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createName, setCreateName] = useState("");
+  const [createArrows, setCreateArrows] = useState<number | "">("");
+  const [createDistance, setCreateDistance] = useState<number | "">("");
+  const [createDescription, setCreateDescription] = useState("");
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteExercise, setDeleteExercise] = useState<Exercise | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem("token"));
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [health, setHealth] = useState<Health | null>(null);
+  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [routines, setRoutines] = useState<Routine[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [healthData, exercisesData, routinesData] = await Promise.all([
+          apiFetch<Health>("/health"),
+          apiFetch<Exercise[]>("/exercises"),
+          apiFetch<Routine[]>("/routines"),
+        ]);
+        setHealth(healthData);
+        setExercises(exercisesData);
+        setRoutines(routinesData);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Error desconocido";
+        setError(message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  useEffect(() => {
+    if (token && view === "home") {
+      setView("professor");
+    }
+  }, [token, view]);
+
+  const handleEditSave = async () => {
+    if (!editExercise || !token) return;
+    setEditLoading(true);
+    setEditError(null);
+    try {
+      const updated = await apiFetch<Exercise>(`/exercises/${editExercise.id}` , {
+        method: "PUT",
+        token,
+        body: JSON.stringify({
+          name: editName,
+          arrows_count: Number(editArrows),
+          distance_m: Number(editDistance),
+          description: editDescription,
+          is_active: true,
+        }),
+      });
+      setExercises((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+      setEditModalOpen(false);
+      setEditExercise(null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error al guardar";
+      setEditError(msg);
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleCreateSave = async () => {
+    if (!token) return;
+    setCreateLoading(true);
+    setCreateError(null);
+    try {
+      const created = await apiFetch<Exercise>("/exercises", {
+        method: "POST",
+        token,
+        body: JSON.stringify({
+          name: createName,
+          arrows_count: Number(createArrows),
+          distance_m: Number(createDistance),
+          description: createDescription,
+          is_active: true,
+        }),
+      });
+      setExercises((prev) => [...prev, created]);
+      setCreateModalOpen(false);
+      setCreateName("");
+      setCreateArrows("");
+      setCreateDistance("");
+      setCreateDescription("");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error al crear";
+      setCreateError(msg);
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!token || !deleteExercise) return;
+    setDeleteLoading(true);
+    setDeleteError(null);
+    try {
+      await apiFetch(`/exercises/${deleteExercise.id}`, {
+        method: "DELETE",
+        token,
+      });
+      setExercises((prev) => prev.filter((e) => e.id !== deleteExercise.id));
+      setDeleteModalOpen(false);
+      setDeleteExercise(null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error al eliminar";
+      setDeleteError(msg);
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const stats = useMemo(() => ({ exercises: exercises.length, routines: routines.length }), [exercises, routines]);
+
+  const healthIcon = health?.status === "ok" ? <CheckCircleIcon color="green.500" /> : <WarningIcon color="orange.400" />;
+
+  const handleLogin = async () => {
+    setAuthError(null);
+    setAuthLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}));
+        throw new Error(detail?.detail || "Credenciales inválidas");
+      }
+      const data = (await res.json()) as { access_token: string };
+      setToken(data.access_token);
+      localStorage.setItem("token", data.access_token);
+      setView("professor");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error al iniciar sesión";
+      setAuthError(msg);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setToken(null);
+    localStorage.removeItem("token");
+    setUsername("");
+    setPassword("");
+    setView("home");
+  };
+
+  if (view === "home") {
+    return (
+      <Box bg="white" minH="100vh" display="flex" alignItems="center" justifyContent="center">
+        <Stack spacing={6} align="center">
+          <Heading size="lg" color="gray.800">
+            Hub
+          </Heading>
+          <Stack direction={{ base: "column", sm: "row" }} spacing={4}>
+            <Button bg="black" color="white" _hover={{ bg: "gray.800" }} _active={{ bg: "gray.900" }} size="lg" onClick={() => setView("dashboard")}>
+              Ver conexiones y datos
+            </Button>
+            <Button bg="black" color="white" _hover={{ bg: "gray.800" }} _active={{ bg: "gray.900" }} size="lg" onClick={() => setView("login")}>
+              Login
+            </Button>
+          </Stack>
+          {token && (
+            <Button variant="outline" onClick={handleLogout}>
+              Logout
+            </Button>
+          )}
+        </Stack>
+      </Box>
+    );
+  }
+
+  if (view === "login") {
+    return (
+      <>
+        <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} minH="100vh">
+          <GridItem
+            display={{ base: "none", md: "block" }}
+            bgImage={`url(${archeryImg})`}
+            bgSize="cover"
+            bgPos="center"
+            m={6}
+            borderRadius="2xl"
+            overflow="hidden"
+          />
+          <GridItem bg="white" display="flex" alignItems="center" justifyContent="center" px={{ base: 6, md: 10 }}>
+            <Box maxW="md" w="full">
+              <Stack spacing={6}>
+                <Stack spacing={2}>
+                  <Heading size="lg" color="black">
+                    Iniciar sesión
+                  </Heading>
+                  <Text color="gray.600">Ingresa tu usuario y contraseña para continuar.</Text>
+                </Stack>
+                <Stack spacing={4}>
+                  <FormControl>
+                    <FormLabel color="gray.800">Usuario</FormLabel>
+                    <Input value={username} onChange={(e) => setUsername(e.target.value)} bg="white" borderColor="gray.300" _hover={{ borderColor: "gray.500" }} />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel color="gray.800">Contraseña</FormLabel>
+                    <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} bg="white" borderColor="gray.300" _hover={{ borderColor: "gray.500" }} />
+                  </FormControl>
+                  {authError && (
+                    <Alert status="error" borderRadius="md">
+                      <AlertIcon />
+                      {authError}
+                    </Alert>
+                  )}
+                  <Button bg="black" color="white" _hover={{ bg: "gray.800" }} _active={{ bg: "gray.900" }} size="lg" borderRadius="full" isLoading={authLoading} onClick={handleLogin} isDisabled={!username || !password}>
+                    Iniciar sesión
+                  </Button>
+                  <Button variant="ghost" onClick={() => setView("home")}>
+                    Volver al Hub
+                  </Button>
+                </Stack>
+              </Stack>
+            </Box>
+          </GridItem>
+        </Grid>
+      </>
+    );
+  }
+
+  if (view === "professor") {
+    return (
+      <>
+        <Grid templateColumns={{ base: "1fr", md: "220px 1fr" }} minH="100vh" bg="white">
+          <GridItem
+            borderRight={{ base: "none", md: "1px solid" }}
+            borderColor="rgba(0,0,0,0.08)"
+            boxShadow={{ base: "none", md: "2px 0 8px rgba(0,0,0,0.06)" }}
+            p={6}
+          >
+            <Stack spacing={4}>
+              <Heading size="md" color="gray.900">
+                Panel profesor
+              </Heading>
+              <Text color={profSection === "rutina" ? "black" : "gray.700"} fontWeight={profSection === "rutina" ? "bold" : "normal"} cursor="pointer" onClick={() => setProfSection("rutina")}>
+                Crear rutina
+              </Text>
+              <Text color={profSection === "ejercicio" ? "black" : "gray.700"} fontWeight={profSection === "ejercicio" ? "bold" : "normal"} cursor="pointer" onClick={() => setProfSection("ejercicio")}>
+                Ejercicios
+              </Text>
+              <Text color={profSection === "perfil" ? "black" : "gray.700"} fontWeight={profSection === "perfil" ? "bold" : "normal"} cursor="pointer" onClick={() => setProfSection("perfil")}>
+                Perfil
+              </Text>
+              <Divider />
+              <Stack spacing={3}>
+                <Button variant="outline" onClick={() => setView("home")}>
+                  Ir al Hub
+                </Button>
+                <Button variant="outline" onClick={() => setView("dashboard")}>
+                  Ver datos
+                </Button>
+                <Button variant="outline" onClick={handleLogout}>
+                  Logout
+                </Button>
+              </Stack>
+            </Stack>
+          </GridItem>
+          <GridItem pl={{ base: 6, md: 10 }} pr={{ base: 0, md: 0 }} py={{ base: 6, md: 10 }} display="flex" alignItems="flex-start" justifyContent="flex-start" w="full">
+            <Stack spacing={4} w="full">
+              {profSection === "rutina" && (
+                <Stack spacing={2}>
+                  <Heading size="lg">Crear rutina</Heading>
+                  <Text color="gray.600">Aquí agregaremos el formulario para crear plantillas semanales.</Text>
+                </Stack>
+              )}
+              {profSection === "ejercicio" && (
+                <Stack spacing={6}>
+                  <Stack spacing={2}>
+                    <Heading size="lg">Ejercicios</Heading>
+                    <Text color="gray.600">Previsualiza y selecciona un ejercicio para ver su detalle o editarlo.</Text>
+                  </Stack>
+                  <HStack align="flex-start" spacing={8} justify="space-between" w="full">
+                    <Stack spacing={6} flex="1">
+                      {exercises.map((ex) => (
+                        <Box
+                          key={ex.id}
+                          p={4}
+                          borderWidth="1px"
+                          borderRadius="lg"
+                          borderColor="gray.200"
+                          bg="white"
+                          shadow="sm"
+                          _hover={{ borderColor: "gray.400", cursor: "pointer" }}
+                          onClick={() => setExpandedExercise((prev) => (prev === ex.id ? null : ex.id))}
+                        >
+                          <HStack align="flex-start" spacing={4}>
+                            <Stack spacing={2} flex="1 1 70%">
+                              <Heading size="md" color="gray.900">
+                                {ex.name}
+                              </Heading>
+                              <Stack spacing={1.5} pt={1}>
+                                <Text color="gray.500">{ex.arrows_count} flechas</Text>
+                                <Collapse in={expandedExercise === ex.id} animateOpacity>
+                                  <Stack spacing={1.5} color="gray.700">
+                                    <Text color="gray.500">Distancia: {ex.distance_m} m</Text>
+                                    <Text color="gray.500">DescripciÃ³n: {ex.description || "Sin descripciÃ³n"}</Text>
+                                    <HStack spacing={2} pt={2}>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditExercise(ex);
+                                          setEditName(ex.name);
+                                          setEditArrows(ex.arrows_count);
+                                          setEditDistance(ex.distance_m);
+                                          setEditDescription(ex.description || "");
+                                          setEditError(null);
+                                          setEditModalOpen(true);
+                                        }}
+                                      >
+                                        Editar
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        borderRadius="xl"
+                                        borderColor="gray.300"
+                                        _hover={{ bg: "red.600", borderColor: "red.700", color: "white" }}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setDeleteExercise(ex);
+                                          setDeleteModalOpen(true);
+                                        }}
+                                      >
+                                        <Image src={trashIconUrl} alt="Eliminar" boxSize="16px" />
+                                      </Button>
+                                    </HStack>
+                                  </Stack>
+                                </Collapse>
+                              </Stack>
+                            </Stack>
+                          </HStack>
+                        </Box>
+                      ))}
+                      {!exercises.length && <Text color="gray.600">No hay ejercicios cargados.</Text>}
+                    </Stack>
+                    <Stack flex="0 0 160px" pt={2} ml="auto" mr="50px" spacing={3}>
+                      <Button
+                        variant="outline"
+                        borderColor="gray.300"
+                        borderRadius="lg"
+                        color="gray.800"
+                        _hover={{ borderColor: "gray.500" }}
+                        onClick={() => setCreateModalOpen(true)}
+                        w="full"
+                      >
+                        <HStack justify="center" spacing={2}>
+                          <Image src={bowIconUrl} alt="Bow icon" boxSize="18px" />
+                          <Text>Crear ejercicio</Text>
+                        </HStack>
+                      </Button>
+                    </Stack>
+                  </HStack>
+                </Stack>
+              )}
+              {profSection === "perfil" && (
+                <Stack spacing={2}>
+                  <Heading size="lg">Perfil</Heading>
+                  <Text color="gray.600">Resumen del usuario y opciones de cuenta.</Text>
+                </Stack>
+              )}
+            </Stack>
+          </GridItem>
+        </Grid>
+        <Modal isOpen={editModalOpen} onClose={() => setEditModalOpen(false)} isCentered>
+          <ModalOverlay />
+          <ModalContent maxW="700px">
+            <ModalHeader>Editar ejercicio</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody maxH="70vh" overflowY="auto">
+              <Stack spacing={3}>
+                <FormControl>
+                  <FormLabel>Nombre</FormLabel>
+                  <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Flechas</FormLabel>
+                  <Input type="number" value={editArrows} onChange={(e) => setEditArrows(e.target.value === "" ? "" : Number(e.target.value))} />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Distancia (m)</FormLabel>
+                  <Input type="number" value={editDistance} onChange={(e) => setEditDistance(e.target.value === "" ? "" : Number(e.target.value))} />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>DescripciÃ³n</FormLabel>
+                  <Textarea
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    minH="360px"
+                    resize="vertical"
+                    borderColor="gray.300"
+                    _hover={{ borderColor: "gray.500" }}
+                    fontSize="md"
+                  />
+                </FormControl>
+                {editError && (
+                  <Alert status="error" borderRadius="md">
+                    <AlertIcon />
+                    {editError}
+                  </Alert>
+                )}
+              </Stack>
+            </ModalBody>
+            <ModalFooter>
+              <HStack spacing={3}>
+                <Button variant="ghost" onClick={() => setEditModalOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  bg="black"
+                  color="white"
+                  _hover={{ bg: "gray.800" }}
+                  _active={{ bg: "gray.900" }}
+                  isLoading={editLoading}
+                  isDisabled={!editName || !editArrows || !editDistance}
+                  onClick={handleEditSave}
+                >
+                  Guardar
+                </Button>
+              </HStack>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+        <Modal isOpen={createModalOpen} onClose={() => setCreateModalOpen(false)} isCentered>
+          <ModalOverlay />
+          <ModalContent maxW="700px">
+            <ModalHeader>Crear ejercicio</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody maxH="70vh" overflowY="auto">
+              <Stack spacing={3}>
+                <FormControl>
+                  <FormLabel>Nombre</FormLabel>
+                  <Input value={createName} onChange={(e) => setCreateName(e.target.value)} />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Flechas</FormLabel>
+                  <Input type="number" value={createArrows} onChange={(e) => setCreateArrows(e.target.value === "" ? "" : Number(e.target.value))} />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Distancia (m)</FormLabel>
+                  <Input type="number" value={createDistance} onChange={(e) => setCreateDistance(e.target.value === "" ? "" : Number(e.target.value))} />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>DescripciÃ³n</FormLabel>
+                  <Textarea
+                    value={createDescription}
+                    onChange={(e) => setCreateDescription(e.target.value)}
+                    minH="180px"
+                    resize="vertical"
+                    borderColor="gray.300"
+                    _hover={{ borderColor: "gray.500" }}
+                    fontSize="md"
+                  />
+                </FormControl>
+                {createError && (
+                  <Alert status="error" borderRadius="md">
+                    <AlertIcon />
+                    {createError}
+                  </Alert>
+                )}
+              </Stack>
+            </ModalBody>
+            <ModalFooter>
+              <HStack spacing={3}>
+                <Button variant="ghost" onClick={() => setCreateModalOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  bg="black"
+                  color="white"
+                  _hover={{ bg: "gray.800" }}
+                  _active={{ bg: "gray.900" }}
+                  isLoading={createLoading}
+                  isDisabled={!createName || !createArrows || !createDistance}
+                  onClick={handleCreateSave}
+                >
+                  Guardar
+                </Button>
+              </HStack>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+        <Modal isOpen={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} isCentered>
+          <ModalOverlay />
+          <ModalContent maxW="420px">
+            <ModalHeader>Â¿Eliminar ejercicio?</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody>
+              {deleteError && (
+                <Alert status="error" borderRadius="md" mb={3}>
+                  <AlertIcon />
+                  {deleteError}
+                </Alert>
+              )}
+              <Text color="gray.700">Esta acciÃ³n eliminarÃ¡ el ejercicio seleccionado.</Text>
+            </ModalBody>
+            <ModalFooter>
+              <HStack spacing={3}>
+                <Button
+                  bg="white"
+                  color="black"
+                  borderColor="gray.300"
+                  borderWidth="1px"
+                  _hover={{ bg: "gray.100" }}
+                  onClick={handleDeleteConfirm}
+                  isLoading={deleteLoading}
+                >
+                  Eliminar
+                </Button>
+                <Button
+                  bg="black"
+                  color="white"
+                  _hover={{ bg: "gray.800" }}
+                  _active={{ bg: "gray.900" }}
+                  onClick={() => setDeleteModalOpen(false)}
+                  isDisabled={deleteLoading}
+                >
+                  Cancelar
+                </Button>
+              </HStack>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Box bgGradient="linear(to-b, gray.50, white)">
+        <Container maxW="6xl" py={10}>
+          <Stack spacing={8}>
+            <HStack spacing={3}>
+              <Button alignSelf="flex-start" variant="outline" onClick={() => setView("home")}>
+                Volver al Hub
+              </Button>
+              {token && (
+                <Button variant="outline" onClick={handleLogout}>
+                  Logout
+                </Button>
+              )}
+            </HStack>
+            <Stack spacing={3}>
+              <Heading size="lg">Entrenamientos de Arquería</Heading>
+              <Text color="gray.600">
+                Maqueta inicial: ejercicios, rutinas semanales y alumnos. Conectado a la API FastAPI en {" "}
+                <Tag colorScheme="blue" variant="subtle">
+                  {API_BASE}
+                </Tag>
+                .
+              </Text>
+            </Stack>
+
+            {loading && (
+              <HStack color="gray.600">
+                <Spinner />
+                <Text>Cargando datos...</Text>
+              </HStack>
+            )}
+
+            {error && (
+              <Alert status="error" borderRadius="md">
+                <AlertIcon />
+                {error}
+              </Alert>
+            )}
+
+            <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+              <StatCard title="Estado API" value={health?.status === "ok" ? "Online" : "Desconocido"} icon={healthIcon} helper={health ? `Entorno: ${health.env}` : "Sin respuesta"} />
+              <StatCard title="Ejercicios" value={stats.exercises.toString()} helper="Creados en la base" />
+              <StatCard title="Rutinas" value={stats.routines.toString()} helper="Plantillas semanales" />
+            </SimpleGrid>
+
+            <Stack spacing={6}>
+              <Heading size="md">Ejercicios</Heading>
+              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                {exercises.map((ex) => (
+                  <Box key={ex.id} p={4} borderWidth="1px" borderRadius="lg" bg="white" shadow="sm">
+                    <HStack justify="space-between" mb={2}>
+                      <Heading size="sm">{ex.name}</Heading>
+                      <Badge colorScheme={ex.is_active ? "green" : "gray"}>{ex.is_active ? "Activo" : "Inactivo"}</Badge>
+                    </HStack>
+                    <Text fontSize="sm" color="gray.600">{ex.description || "Sin DescripciÃ³n"}</Text>
+                    <HStack spacing={4} mt={3} color="gray.700" fontWeight="medium">
+                      <Tag colorScheme="blue">{ex.distance_m} m</Tag>
+                      <Tag colorScheme="purple">{ex.arrows_count} flechas</Tag>
+                    </HStack>
+                  </Box>
+                ))}
+                {!exercises.length && !loading && (
+                  <Box p={4} borderWidth="1px" borderRadius="lg" bg="white">
+                    <Text color="gray.600">Sin ejercicios cargados.</Text>
+                  </Box>
+                )}
+              </SimpleGrid>
+            </Stack>
+
+            <Stack spacing={6}>
+              <Heading size="md">Rutinas semanales</Heading>
+              <Stack spacing={4}>
+                {routines.map((routine) => (
+                  <Box key={routine.id} p={5} borderWidth="1px" borderRadius="lg" bg="white" shadow="sm">
+                    <HStack justify="space-between" mb={2}>
+                      <Heading size="sm">{routine.name}</Heading>
+                      <Badge colorScheme={routine.is_active ? "green" : "gray"}>{routine.is_active ? "Activa" : "Inactiva"}</Badge>
+                    </HStack>
+                    {routine.description && (
+                      <Text fontSize="sm" color="gray.600" mb={3}>
+                        {routine.description}
+                      </Text>
+                    )}
+                    <Divider my={2} />
+                    <Stack spacing={3}>
+                      {routine.days.map((day) => (
+                        <Box key={day.id} p={3} borderWidth="1px" borderRadius="md" bg="gray.50">
+                          <HStack justify="space-between" mb={2}>
+                            <Text fontWeight="bold">{formatDay(day)}</Text>
+                            <Tag colorScheme="blue">Día {day.day_number}</Tag>
+                          </HStack>
+                          <VStack align="start" spacing={2}>
+                            {day.exercises.map((dex) => (
+                              <HStack key={dex.id} spacing={2} align="center">
+                                <Badge colorScheme="purple">Ej {dex.exercise_id}</Badge>
+                                <Text fontSize="sm">Orden {dex.sort_order}</Text>
+                                {dex.arrows_override && <Tag colorScheme="orange">{dex.arrows_override} flechas</Tag>}
+                                {dex.distance_override_m && <Tag colorScheme="teal">{dex.distance_override_m} m</Tag>}
+                              </HStack>
+                            ))}
+                            {!day.exercises.length && <Text fontSize="sm" color="gray.500">Sin ejercicios en este Día.</Text>}
+                          </VStack>
+                        </Box>
+                      ))}
+                      {!routine.days.length && (
+                        <HStack color="gray.600">
+                          <WarningIcon />
+                          <Text fontSize="sm">Rutina sin Días configurados.</Text>
+                        </HStack>
+                      )}
+                    </Stack>
+                  </Box>
+                ))}
+                {!routines.length && !loading && (
+                  <Box p={4} borderWidth="1px" borderRadius="lg" bg="white">
+                    <Text color="gray.600">Sin rutinas cargadas.</Text>
+                  </Box>
+                )}
+              </Stack>
+            </Stack>
+          </Stack>
+        </Container>
+      </Box>
+    </>
+  );
+}
+
+type StatCardProps = {
+  title: string;
+  value: string;
+  helper?: string;
+  icon?: ReactNode;
+};
+
+function StatCard({ title, value, helper, icon }: StatCardProps) {
+  return (
+    <Box p={4} borderWidth="1px" borderRadius="lg" bg="white" shadow="sm">
+      <HStack justify="space-between" mb={2}>
+        <Text fontSize="sm" color="gray.500">
+          {title}
+        </Text>
+        {icon}
+      </HStack>
+      <Heading size="md">{value}</Heading>
+      {helper && (
+        <Text fontSize="sm" color="gray.600" mt={1}>
+          {helper}
+        </Text>
+      )}
+    </Box>
+  );
+}
+
+export default App;
+
+
+
+

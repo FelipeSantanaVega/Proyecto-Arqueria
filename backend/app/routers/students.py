@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -9,12 +11,14 @@ from ..deps import get_db
 from ..models import Student
 from ..schemas import StudentCreate, StudentOut, StudentStatusUpdate, StudentUpdate
 from ..security import require_roles
+from ..student_retention import purge_inactive_students
 
 router = APIRouter(prefix="/students", tags=["students"])
 
 
 @router.get("", response_model=list[StudentOut])
 def list_students(db: Session = Depends(get_db)):
+    purge_inactive_students(db)
     stmt = select(Student).order_by(Student.full_name)
     return db.scalars(stmt).all()
 
@@ -25,7 +29,12 @@ def create_student(
     db: Session = Depends(get_db),
     _: None = Depends(require_roles({"admin", "professor"})),
 ):
-    student = Student(**payload.dict())
+    data = payload.dict()
+    if data.get("is_active") is False:
+        data["inactive_since"] = datetime.utcnow()
+    else:
+        data["inactive_since"] = None
+    student = Student(**data)
     db.add(student)
     try:
         db.commit()
@@ -57,8 +66,15 @@ def update_student(
     student = db.get(Student, student_id)
     if not student:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alumno no encontrado")
+    was_active = student.is_active
     for field, value in payload.dict().items():
         setattr(student, field, value)
+    if student.is_active:
+        student.inactive_since = None
+    elif was_active:
+        student.inactive_since = datetime.utcnow()
+    elif student.inactive_since is None:
+        student.inactive_since = datetime.utcnow()
     try:
         db.commit()
     except IntegrityError:
@@ -81,7 +97,14 @@ def update_student_status(
     student = db.get(Student, student_id)
     if not student:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alumno no encontrado")
+    was_active = student.is_active
     student.is_active = payload.is_active
+    if student.is_active:
+        student.inactive_since = None
+    elif was_active:
+        student.inactive_since = datetime.utcnow()
+    elif student.inactive_since is None:
+        student.inactive_since = datetime.utcnow()
     db.commit()
     db.refresh(student)
     return student

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..deps import get_db
 from ..models import StudentRoutineAssignment, Student, Routine
+from ..routine_retention import purge_expired_temporary_routines
 from ..schemas import AssignmentCreate, AssignmentOut
 from ..security import require_roles
 
@@ -17,6 +18,7 @@ router = APIRouter(prefix="/assignments", tags=["assignments"])
 
 @router.get("", response_model=list[AssignmentOut])
 def list_assignments(db: Session = Depends(get_db)):
+    purge_expired_temporary_routines(db)
     stmt = select(StudentRoutineAssignment).order_by(StudentRoutineAssignment.created_at.desc())
     return db.scalars(stmt).all()
 

@@ -51,8 +51,8 @@ class User(Base):
 class Exercise(Base):
     __tablename__ = "exercises"
     __table_args__ = (
-        CheckConstraint("arrows_count > 0", name="chk_exercises_arrows_positive"),
-        CheckConstraint("distance_m > 0", name="chk_exercises_distance_positive"),
+        CheckConstraint("arrows_count >= 0", name="chk_exercises_arrows_positive"),
+        CheckConstraint("distance_m >= 0", name="chk_exercises_distance_positive"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -88,6 +88,7 @@ class Student(Base):
     bow_pounds: Mapped[Optional[float]] = mapped_column(Numeric(6, 2), nullable=True)
     arrows_available: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    inactive_since: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )
@@ -104,12 +105,14 @@ class Routine(Base):
     __tablename__ = "routines"
     __table_args__ = (
         UniqueConstraint("name", name="uq_routines_name"),
+        Index("idx_routines_template_active", "is_template", "is_active"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_template: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )
@@ -158,11 +161,11 @@ class RoutineDayExercise(Base):
     __table_args__ = (
         UniqueConstraint("routine_day_id", "sort_order", name="uq_day_sort"),
         CheckConstraint(
-            "arrows_override IS NULL OR arrows_override > 0",
+            "arrows_override IS NULL OR arrows_override >= 0",
             name="chk_day_exercises_arrows_override_positive",
         ),
         CheckConstraint(
-            "distance_override_m IS NULL OR distance_override_m > 0",
+            "distance_override_m IS NULL OR distance_override_m >= 0",
             name="chk_day_exercises_distance_override_positive",
         ),
     )
