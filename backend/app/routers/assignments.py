@@ -9,8 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..deps import get_db
 from ..models import StudentRoutineAssignment, Student, Routine
-from ..routine_retention import purge_expired_temporary_routines
-from ..schemas import AssignmentCreate, AssignmentOut
+from ..schemas import AssignmentCreate, AssignmentOut, AssignmentStatusUpdate
 from ..security import require_roles
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
@@ -18,7 +17,6 @@ router = APIRouter(prefix="/assignments", tags=["assignments"])
 
 @router.get("", response_model=list[AssignmentOut])
 def list_assignments(db: Session = Depends(get_db)):
-    purge_expired_temporary_routines(db)
     stmt = select(StudentRoutineAssignment).order_by(StudentRoutineAssignment.created_at.desc())
     return db.scalars(stmt).all()
 
@@ -80,3 +78,22 @@ def delete_assignment(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asignación no encontrada")
     db.delete(assignment)
     db.commit()
+
+
+@router.patch("/{assignment_id}/status", response_model=AssignmentOut)
+def update_assignment_status(
+    assignment_id: int,
+    payload: AssignmentStatusUpdate,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_roles({"admin", "professor"})),
+):
+    # Futuro: permitir role "student" validando ownership alumno<->usuario.
+    assignment = db.get(StudentRoutineAssignment, assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asignación no encontrada")
+    assignment.status = payload.status
+    if payload.status == "finished" and assignment.end_date is None:
+        assignment.end_date = date.today()
+    db.commit()
+    db.refresh(assignment)
+    return assignment

@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..deps import get_db
 from ..models import Routine, RoutineDay, RoutineDayExercise, Exercise
-from ..routine_retention import purge_expired_temporary_routines
 from ..schemas import RoutineCreate, RoutineOut
 from ..security import require_roles
 
@@ -15,7 +14,6 @@ router = APIRouter(prefix="/routines", tags=["routines"])
 
 @router.get("", response_model=list[RoutineOut])
 def list_routines(db: Session = Depends(get_db)):
-    purge_expired_temporary_routines(db)
     stmt = (
         select(Routine)
         .options(

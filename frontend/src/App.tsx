@@ -40,20 +40,6 @@ import archeryImg from "./assets/Arqueros Andinos logo upscaled.png";
 import userPlusIconUrl from "./assets/user-plus.svg";
 import editIconUrl from "./assets/edit.svg";
 import notebookTabsIconUrl from "./assets/notebook-tabs.svg";
-import lunesIconUrl from "./assets/dias-semana-svg/lunes.svg";
-import lunesFilledIconUrl from "./assets/dias-semana-svg/lunes-filled.svg";
-import martesIconUrl from "./assets/dias-semana-svg/martes.svg";
-import martesFilledIconUrl from "./assets/dias-semana-svg/martes-filled.svg";
-import miercolesIconUrl from "./assets/dias-semana-svg/miercoles.svg";
-import miercolesFilledIconUrl from "./assets/dias-semana-svg/miercoles-filled.svg";
-import juevesIconUrl from "./assets/dias-semana-svg/jueves.svg";
-import juevesFilledIconUrl from "./assets/dias-semana-svg/jueves-filled.svg";
-import viernesIconUrl from "./assets/dias-semana-svg/viernes.svg";
-import viernesFilledIconUrl from "./assets/dias-semana-svg/viernes-filled.svg";
-import sabadoIconUrl from "./assets/dias-semana-svg/sabado.svg";
-import sabadoFilledIconUrl from "./assets/dias-semana-svg/sabado-filled.svg";
-import domingoIconUrl from "./assets/dias-semana-svg/domingo.svg";
-import domingoFilledIconUrl from "./assets/dias-semana-svg/domingo-filled.svg";
 import { apiFetch, API_BASE } from "./api";
 
 const routineDaySlide = keyframes`
@@ -186,7 +172,7 @@ function App() {
   const [routineModalStep, setRoutineModalStep] = useState<0 | 1 | 2 | 3>(0);
   const [editingRoutineId, setEditingRoutineId] = useState<number | null>(null);
   const [routineName, setRoutineName] = useState("");
-  const [routineSelectedDays, setRoutineSelectedDays] = useState<string[]>([]);
+  const [routineDayCount, setRoutineDayCount] = useState(1);
   const [routineDayCursor, setRoutineDayCursor] = useState(0);
   const [routineExercisesByDay, setRoutineExercisesByDay] = useState<Record<string, number[]>>({});
   const [routineExerciseSearch, setRoutineExerciseSearch] = useState("");
@@ -201,6 +187,8 @@ function App() {
   const [routineCreateEditArrows, setRoutineCreateEditArrows] = useState<number | "">("");
   const [routineCreateEditDistance, setRoutineCreateEditDistance] = useState<number | "">("");
   const [routineCreateEditDescription, setRoutineCreateEditDescription] = useState("");
+  const [deleteRoutineDayConfirmOpen, setDeleteRoutineDayConfirmOpen] = useState(false);
+  const [deleteRoutineDayTargetNumber, setDeleteRoutineDayTargetNumber] = useState<number | null>(null);
   const [routineModalBodyHeight, setRoutineModalBodyHeight] = useState<number | null>(null);
   const [createRoutineLoading, setCreateRoutineLoading] = useState(false);
   const [createRoutineError, setCreateRoutineError] = useState<string | null>(null);
@@ -222,24 +210,28 @@ function App() {
     notes?: string;
   } | null>(null);
   const [routineAssignStudentId, setRoutineAssignStudentId] = useState<number | null>(null);
-  const [routineAssignExistingOverrides, setRoutineAssignExistingOverrides] = useState<Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>>({});
-  const [routineAssignAddedExercisesByDay, setRoutineAssignAddedExercisesByDay] = useState<Record<number, number[]>>({});
+  const [routineAssignDayCount, setRoutineAssignDayCount] = useState(1);
+  const [routineAssignExercisesByDay, setRoutineAssignExercisesByDay] = useState<Record<string, number[]>>({});
+  const [routineAssignExerciseOverridesByDay, setRoutineAssignExerciseOverridesByDay] = useState<
+    Record<string, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>>
+  >({});
   const [addExerciseDayModalOpen, setAddExerciseDayModalOpen] = useState(false);
-  const [addExerciseTargetDayId, setAddExerciseTargetDayId] = useState<number | null>(null);
+  const [addExerciseTargetDayKey, setAddExerciseTargetDayKey] = useState<string | null>(null);
   const [addExerciseSearch, setAddExerciseSearch] = useState("");
   const [editAssignExerciseModalOpen, setEditAssignExerciseModalOpen] = useState(false);
-  const [editAssignExerciseId, setEditAssignExerciseId] = useState<number | null>(null);
-  const [editAssignTemporaryTarget, setEditAssignTemporaryTarget] = useState<{ dayId: number; exerciseId: number } | null>(null);
-  const [routineAssignAddedExerciseOverridesByDay, setRoutineAssignAddedExerciseOverridesByDay] = useState<
-    Record<number, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>>
-  >({});
+  const [editAssignExerciseTarget, setEditAssignExerciseTarget] = useState<{ dayKey: string; exerciseId: number } | null>(null);
   const [editAssignArrows, setEditAssignArrows] = useState<number | "">("");
   const [editAssignDistance, setEditAssignDistance] = useState<number | "">("");
   const [editAssignDescription, setEditAssignDescription] = useState("");
+  const [deleteAssignDayConfirmOpen, setDeleteAssignDayConfirmOpen] = useState(false);
+  const [deleteAssignDayTargetNumber, setDeleteAssignDayTargetNumber] = useState<number | null>(null);
+  const [pendingScrollCreateSummaryToBottom, setPendingScrollCreateSummaryToBottom] = useState(false);
+  const [pendingScrollAssignSummaryToBottom, setPendingScrollAssignSummaryToBottom] = useState(false);
   const routineStepRef = useRef<HTMLDivElement | null>(null);
   const addExerciseListRef = useRef<HTMLDivElement | null>(null);
   const routineSummaryListRef = useRef<HTMLDivElement | null>(null);
   const routineCreateAddExerciseListRef = useRef<HTMLDivElement | null>(null);
+  const assignRoutineSummaryListRef = useRef<HTMLDivElement | null>(null);
   const [createName, setCreateName] = useState("");
   const [createArrows, setCreateArrows] = useState<number | "">("");
   const [createDistance, setCreateDistance] = useState<number | "">("");
@@ -642,20 +634,25 @@ function App() {
     });
   }, [exercises, exerciseSearch]);
 
-  const routineDayOptions = [
-    { key: "lunes", label: "Lunes", dayNumber: 1, icon: lunesIconUrl, iconFilled: lunesFilledIconUrl },
-    { key: "martes", label: "Martes", dayNumber: 2, icon: martesIconUrl, iconFilled: martesFilledIconUrl },
-    { key: "miercoles", label: "Miércoles", dayNumber: 3, icon: miercolesIconUrl, iconFilled: miercolesFilledIconUrl },
-    { key: "jueves", label: "Jueves", dayNumber: 4, icon: juevesIconUrl, iconFilled: juevesFilledIconUrl },
-    { key: "viernes", label: "Viernes", dayNumber: 5, icon: viernesIconUrl, iconFilled: viernesFilledIconUrl },
-    { key: "sabado", label: "Sábado", dayNumber: 6, icon: sabadoIconUrl, iconFilled: sabadoFilledIconUrl },
-    { key: "domingo", label: "Domingo", dayNumber: 7, icon: domingoIconUrl, iconFilled: domingoFilledIconUrl },
-  ];
-  const orderedSelectedRoutineDays = useMemo(
-    () => routineDayOptions.filter((day) => routineSelectedDays.includes(day.key)),
-    [routineSelectedDays],
+  const routineBuilderDays = useMemo(
+    () =>
+      Array.from({ length: Math.max(1, Math.min(7, routineDayCount)) }, (_, index) => ({
+        key: `day_${index + 1}`,
+        label: `Día ${index + 1}`,
+        dayNumber: index + 1,
+      })),
+    [routineDayCount],
   );
-  const currentRoutineDay = orderedSelectedRoutineDays[routineDayCursor] || null;
+  const routineAssignBuilderDays = useMemo(
+    () =>
+      Array.from({ length: Math.max(1, Math.min(7, routineAssignDayCount)) }, (_, index) => ({
+        key: `day_${index + 1}`,
+        label: `Día ${index + 1}`,
+        dayNumber: index + 1,
+      })),
+    [routineAssignDayCount],
+  );
+  const currentRoutineDay = routineBuilderDays[routineDayCursor] || null;
   const currentRoutineDayKey = currentRoutineDay?.key || null;
   const currentRoutineDayLabel = currentRoutineDay?.label || "";
   const exerciseNameById = useMemo(() => new Map(exercises.map((ex) => [ex.id, ex.name])), [exercises]);
@@ -665,7 +662,14 @@ function App() {
     [templateRoutines],
   );
   const routineModalMaxW = routineModalStep === 0 ? "520px" : routineModalStep === 1 ? "640px" : "760px";
-  const routineModalMinHeight = routineModalStep === 0 ? 205 : routineModalStep === 1 ? 220 : routineModalStep === 2 ? 260 : 320;
+  const routineModalMinHeight = routineModalStep === 0
+    ? 205
+    : routineModalStep === 1
+      ? 220
+      : routineModalStep === 2
+        ? 300
+        : Math.min(340 + Math.max(0, routineDayCount - 1) * 55, 760);
+  const routineModalMaxBodyHeight = routineModalStep === 0 ? 320 : routineModalStep === 1 ? 420 : routineModalStep === 2 ? 620 : 760;
   const actionIconButtonSize = { base: "xs", xl: "sm", "2xl": "md" } as const;
   const actionIconSize = "15px";
   const filteredRoutineExercises = useMemo(() => {
@@ -677,22 +681,35 @@ function App() {
       return byName || byArrows;
     });
   }, [exercises, routineExerciseSearch]);
+  const routineSummaryListMaxH = Math.max(
+    240,
+    Math.min(520, 240 + (routineDayCount - 1) * 55),
+  );
+  const routineAssignSummaryListMaxH = Math.max(
+    240,
+    Math.min(520, 240 + (routineAssignDayCount - 1) * 55),
+  );
 
   useLayoutEffect(() => {
     if (!createRoutineModalOpen || !routineStepRef.current) return;
-    const nextHeight = Math.max(routineModalMinHeight, Math.ceil(routineStepRef.current.scrollHeight + 48));
+    const contentHeight = Math.ceil(routineStepRef.current.scrollHeight + 48);
+    const nextHeight = Math.max(
+      routineModalMinHeight,
+      Math.min(routineModalMaxBodyHeight, contentHeight),
+    );
     setRoutineModalBodyHeight((prev) => (prev === nextHeight ? prev : nextHeight));
   }, [
     createRoutineModalOpen,
     routineModalStep,
     routineName,
-    routineSelectedDays.length,
+    routineDayCount,
     routineDayCursor,
     routineExerciseSearch,
     routineCreateAddExerciseSearch,
     filteredRoutineExercises.length,
     currentRoutineDayKey,
     routineModalMinHeight,
+    routineModalMaxBodyHeight,
     routineExercisesByDay,
     routineCreateExerciseOverridesByDay,
   ]);
@@ -701,12 +718,16 @@ function App() {
     if (!createRoutineModalOpen || !routineStepRef.current || typeof ResizeObserver === "undefined") return;
     const node = routineStepRef.current;
     const observer = new ResizeObserver(() => {
-      const nextHeight = Math.max(routineModalMinHeight, Math.ceil(node.scrollHeight + 48));
+      const contentHeight = Math.ceil(node.scrollHeight + 48);
+      const nextHeight = Math.max(
+        routineModalMinHeight,
+        Math.min(routineModalMaxBodyHeight, contentHeight),
+      );
       setRoutineModalBodyHeight((prev) => (prev === nextHeight ? prev : nextHeight));
     });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [createRoutineModalOpen, routineModalStep, routineDayCursor, routineModalMinHeight]);
+  }, [createRoutineModalOpen, routineModalStep, routineDayCursor, routineModalMinHeight, routineModalMaxBodyHeight]);
 
   const getWeekRange = () => {
     const now = new Date();
@@ -743,6 +764,19 @@ function App() {
     openAssignRoutineModal(student);
   };
 
+  const resetAssignRoutineDraft = () => {
+    setRoutineAssignDayCount(1);
+    setRoutineAssignExercisesByDay({});
+    setRoutineAssignExerciseOverridesByDay({});
+    setAddExerciseDayModalOpen(false);
+    setAddExerciseTargetDayKey(null);
+    setAddExerciseSearch("");
+    setEditAssignExerciseModalOpen(false);
+    setEditAssignExerciseTarget(null);
+    setDeleteAssignDayConfirmOpen(false);
+    setDeleteAssignDayTargetNumber(null);
+  };
+
   const openAssignRoutineModal = (student: Student) => {
     const existingActive = assignments
       .filter((a) => a.student_id === student.id && a.status === "active")
@@ -760,8 +794,7 @@ function App() {
     setSelectedRoutineToAssign(null);
     setAssignRoutineError(null);
     setAssignRoutineLoading(false);
-    setRoutineAssignExistingOverrides({});
-    setRoutineAssignAddedExerciseOverridesByDay({});
+    resetAssignRoutineDraft();
     setAssignRoutineModalOpen(true);
   };
 
@@ -772,15 +805,7 @@ function App() {
     setSelectedRoutineToAssign(null);
     setAssignRoutineError(null);
     setAssignRoutineLoading(false);
-    setRoutineAssignExistingOverrides({});
-    setRoutineAssignAddedExercisesByDay({});
-    setRoutineAssignAddedExerciseOverridesByDay({});
-    setAddExerciseDayModalOpen(false);
-    setAddExerciseTargetDayId(null);
-    setAddExerciseSearch("");
-    setEditAssignExerciseId(null);
-    setEditAssignTemporaryTarget(null);
-    setEditAssignExerciseModalOpen(false);
+    resetAssignRoutineDraft();
     setReplaceAssignError(null);
   };
 
@@ -801,8 +826,7 @@ function App() {
       setSelectedRoutineToAssign(null);
       setAssignRoutineError(null);
       setAssignRoutineLoading(false);
-      setRoutineAssignExistingOverrides({});
-      setRoutineAssignAddedExerciseOverridesByDay({});
+      resetAssignRoutineDraft();
       setAssignRoutineModalOpen(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al reemplazar la rutina activa";
@@ -852,7 +876,7 @@ function App() {
   const openCreateRoutineModal = () => {
     setEditingRoutineId(null);
     setRoutineName("");
-    setRoutineSelectedDays([]);
+    setRoutineDayCount(1);
     setRoutineDayCursor(0);
     setRoutineExercisesByDay({});
     setRoutineExerciseSearch("");
@@ -865,6 +889,8 @@ function App() {
     setRoutineCreateEditArrows("");
     setRoutineCreateEditDistance("");
     setRoutineCreateEditDescription("");
+    setDeleteRoutineDayConfirmOpen(false);
+    setDeleteRoutineDayTargetNumber(null);
     setRoutineModalBodyHeight(null);
     setCreateRoutineError(null);
     setRoutineModalStep(0);
@@ -874,7 +900,7 @@ function App() {
   const closeCreateRoutineModal = () => {
     setCreateRoutineModalOpen(false);
     setRoutineModalStep(0);
-    setRoutineSelectedDays([]);
+    setRoutineDayCount(1);
     setRoutineDayCursor(0);
     setRoutineExercisesByDay({});
     setRoutineExerciseSearch("");
@@ -887,6 +913,8 @@ function App() {
     setRoutineCreateEditArrows("");
     setRoutineCreateEditDistance("");
     setRoutineCreateEditDescription("");
+    setDeleteRoutineDayConfirmOpen(false);
+    setDeleteRoutineDayTargetNumber(null);
     setRoutineModalBodyHeight(null);
     setCreateRoutineError(null);
     setCreateRoutineLoading(false);
@@ -896,14 +924,10 @@ function App() {
 
   const openEditRoutineModal = (routine: Routine) => {
     const sortedDays = [...routine.days].sort((a, b) => a.day_number - b.day_number);
-    const selectedKeys = sortedDays
-      .map((day) => routineDayOptions.find((option) => option.dayNumber === day.day_number)?.key || null)
-      .filter((key): key is string => key !== null);
     const exercisesByDay: Record<string, number[]> = {};
     const overridesByDay: Record<string, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
     for (const day of sortedDays) {
-      const key = routineDayOptions.find((option) => option.dayNumber === day.day_number)?.key;
-      if (!key) continue;
+      const key = `day_${day.day_number}`;
       exercisesByDay[key] = [...day.exercises]
         .sort((a, b) => a.sort_order - b.sort_order)
         .map((exercise) => exercise.exercise_id);
@@ -923,7 +947,7 @@ function App() {
     }
     setEditingRoutineId(routine.id);
     setRoutineName(routine.name);
-    setRoutineSelectedDays(selectedKeys);
+    setRoutineDayCount(Math.max(1, Math.min(7, sortedDays.length || 1)));
     setRoutineExercisesByDay(exercisesByDay);
     setRoutineCreateExerciseOverridesByDay(overridesByDay);
     setRoutineDayCursor(0);
@@ -936,15 +960,13 @@ function App() {
     setRoutineCreateEditArrows("");
     setRoutineCreateEditDistance("");
     setRoutineCreateEditDescription("");
+    setDeleteRoutineDayConfirmOpen(false);
+    setDeleteRoutineDayTargetNumber(null);
     setRoutineModalBodyHeight(null);
     setCreateRoutineError(null);
     setCreateRoutineLoading(false);
     setRoutineModalStep(0);
     setCreateRoutineModalOpen(true);
-  };
-
-  const toggleRoutineDay = (dayKey: string) => {
-    setRoutineSelectedDays((prev) => (prev.includes(dayKey) ? prev.filter((d) => d !== dayKey) : [...prev, dayKey]));
   };
 
   const toggleRoutineExerciseForDay = (dayKey: string, exerciseId: number) => {
@@ -955,14 +977,6 @@ function App() {
     });
   };
 
-  const handleRoutineDaysContinue = () => {
-    if (orderedSelectedRoutineDays.length === 0) return;
-    setRoutineDayCursor(0);
-    setRoutineExerciseSearch("");
-    setCreateRoutineError(null);
-    setRoutineModalStep(2);
-  };
-
   const handleRoutineExerciseContinue = async () => {
     if (!currentRoutineDayKey) return;
     const selectedForDay = routineExercisesByDay[currentRoutineDayKey] || [];
@@ -970,7 +984,7 @@ function App() {
       setCreateRoutineError("Selecciona al menos un ejercicio para este día.");
       return;
     }
-    if (routineDayCursor < orderedSelectedRoutineDays.length - 1) {
+    if (routineDayCursor < routineBuilderDays.length - 1) {
       setRoutineDayCursor((prev) => prev + 1);
       setRoutineExerciseSearch("");
       setCreateRoutineError(null);
@@ -997,7 +1011,7 @@ function App() {
           : routineAssignStudentId
             ? false
             : true,
-        days: orderedSelectedRoutineDays.map((day) => ({
+        days: routineBuilderDays.map((day) => ({
           day_number: day.dayNumber,
           name: day.label,
           exercises: (routineExercisesByDay[day.key] || []).map((exerciseId, idx) => ({
@@ -1063,6 +1077,59 @@ function App() {
     setRoutineCreateAddExerciseSearch("");
   };
 
+  const handleAddRoutineDay = () => {
+    if (routineDayCount >= 7) return;
+    const nextCount = routineDayCount + 1;
+    const nextKey = `day_${nextCount}`;
+    setRoutineDayCount(nextCount);
+    setRoutineExercisesByDay((prev) => ({ ...prev, [nextKey]: prev[nextKey] || [] }));
+    setPendingScrollCreateSummaryToBottom(true);
+  };
+
+  const requestDeleteRoutineDay = (dayNumber: number) => {
+    if (routineDayCount <= 1) return;
+    setDeleteRoutineDayTargetNumber(dayNumber);
+    setDeleteRoutineDayConfirmOpen(true);
+  };
+
+  const confirmDeleteRoutineDay = () => {
+    if (!deleteRoutineDayTargetNumber || routineDayCount <= 1) {
+      setDeleteRoutineDayConfirmOpen(false);
+      setDeleteRoutineDayTargetNumber(null);
+      return;
+    }
+    const target = deleteRoutineDayTargetNumber;
+    const nextCount = Math.max(1, routineDayCount - 1);
+
+    setRoutineExercisesByDay((prev) => {
+      const next: Record<string, number[]> = {};
+      let writeIdx = 1;
+      for (let readIdx = 1; readIdx <= routineDayCount; readIdx++) {
+        if (readIdx === target) continue;
+        next[`day_${writeIdx}`] = [...(prev[`day_${readIdx}`] || [])];
+        writeIdx += 1;
+      }
+      return next;
+    });
+
+    setRoutineCreateExerciseOverridesByDay((prev) => {
+      const next: Record<string, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
+      let writeIdx = 1;
+      for (let readIdx = 1; readIdx <= routineDayCount; readIdx++) {
+        if (readIdx === target) continue;
+        const source = prev[`day_${readIdx}`];
+        if (source) next[`day_${writeIdx}`] = { ...source };
+        writeIdx += 1;
+      }
+      return next;
+    });
+
+    setRoutineDayCount(nextCount);
+    setRoutineDayCursor((prev) => Math.min(prev, nextCount - 1));
+    setDeleteRoutineDayConfirmOpen(false);
+    setDeleteRoutineDayTargetNumber(null);
+  };
+
   const openRoutineCreateEditExercise = (dayKey: string, exerciseId: number) => {
     const base = exercises.find((ex) => ex.id === exerciseId);
     const override = routineCreateExerciseOverridesByDay[dayKey]?.[exerciseId];
@@ -1120,6 +1187,34 @@ function App() {
     e.stopPropagation();
   };
 
+  const handleAssignRoutineSummaryWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const node = assignRoutineSummaryListRef.current;
+    if (!node) return;
+    node.scrollTop += e.deltaY;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  useEffect(() => {
+    if (!pendingScrollCreateSummaryToBottom || routineModalStep !== 3) return;
+    const node = routineSummaryListRef.current;
+    if (!node) return;
+    requestAnimationFrame(() => {
+      node.scrollTop = node.scrollHeight;
+      setPendingScrollCreateSummaryToBottom(false);
+    });
+  }, [pendingScrollCreateSummaryToBottom, routineDayCount, routineModalStep]);
+
+  useEffect(() => {
+    if (!pendingScrollAssignSummaryToBottom || assignRoutineStep !== "existing_preview") return;
+    const node = assignRoutineSummaryListRef.current;
+    if (!node) return;
+    requestAnimationFrame(() => {
+      node.scrollTop = node.scrollHeight;
+      setPendingScrollAssignSummaryToBottom(false);
+    });
+  }, [pendingScrollAssignSummaryToBottom, routineAssignDayCount, assignRoutineStep]);
+
   const handleChooseCreateRoutineForStudent = () => {
     if (!assignRoutineStudent) return;
     setRoutineAssignStudentId(assignRoutineStudent.id);
@@ -1128,9 +1223,7 @@ function App() {
     setSelectedRoutineToAssign(null);
     setAssignRoutineError(null);
     setAssignRoutineLoading(false);
-    setRoutineAssignExistingOverrides({});
-    setRoutineAssignAddedExercisesByDay({});
-    setRoutineAssignAddedExerciseOverridesByDay({});
+    resetAssignRoutineDraft();
     openCreateRoutineModal();
   };
 
@@ -1148,9 +1241,7 @@ function App() {
     setAssignRoutineStep("existing_list");
     setSelectedRoutineToAssign(null);
     setAssignRoutineError(null);
-    setRoutineAssignExistingOverrides({});
-    setRoutineAssignAddedExercisesByDay({});
-    setRoutineAssignAddedExerciseOverridesByDay({});
+    resetAssignRoutineDraft();
   };
 
   const tryCreateAssignment = async (payload: {
@@ -1189,55 +1280,59 @@ function App() {
   };
 
   const handleSelectRoutineToAssign = (routine: Routine) => {
+    const orderedDays = [...routine.days].sort((a, b) => a.day_number - b.day_number);
+    const nextExercisesByDay: Record<string, number[]> = {};
+    const nextOverridesByDay: Record<string, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
+    orderedDays.forEach((day, index) => {
+      const dayKey = `day_${index + 1}`;
+      nextExercisesByDay[dayKey] = day.exercises
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((ex) => ex.exercise_id);
+      day.exercises.forEach((ex) => {
+        const hasOverride = ex.arrows_override !== null || ex.distance_override_m !== null || (ex.notes || "").trim() !== "";
+        if (!hasOverride) return;
+        nextOverridesByDay[dayKey] = nextOverridesByDay[dayKey] || {};
+        nextOverridesByDay[dayKey][ex.exercise_id] = {
+          arrows_override: ex.arrows_override,
+          distance_override_m: ex.distance_override_m,
+          description_override: ex.notes || null,
+        };
+      });
+    });
     setSelectedRoutineToAssign(routine);
     setAssignRoutineStep("existing_preview");
     setAssignRoutineError(null);
-    setRoutineAssignExistingOverrides({});
-    setRoutineAssignAddedExercisesByDay({});
-    setRoutineAssignAddedExerciseOverridesByDay({});
+    setRoutineAssignDayCount(Math.max(1, Math.min(7, orderedDays.length || 1)));
+    setRoutineAssignExercisesByDay(nextExercisesByDay);
+    setRoutineAssignExerciseOverridesByDay(nextOverridesByDay);
+    setDeleteAssignDayConfirmOpen(false);
+    setDeleteAssignDayTargetNumber(null);
   };
 
-  const openEditAssignExercise = (dayExercise: RoutineDayExercise) => {
-    const base = exercises.find((ex) => ex.id === dayExercise.exercise_id);
-    const override = routineAssignExistingOverrides[dayExercise.id];
-    setEditAssignExerciseId(dayExercise.id);
-    setEditAssignTemporaryTarget(null);
-    setEditAssignArrows(override?.arrows_override ?? dayExercise.arrows_override ?? base?.arrows_count ?? "");
-    setEditAssignDistance(override?.distance_override_m ?? dayExercise.distance_override_m ?? Number(base?.distance_m ?? 0) ?? "");
-    setEditAssignDescription(override?.description_override ?? base?.description ?? "");
-    setEditAssignExerciseModalOpen(true);
-  };
-
-  const openEditAssignAddedExercise = (dayId: number, exerciseId: number) => {
+  const openEditAssignExercise = (dayKey: string, exerciseId: number) => {
     const base = exercises.find((ex) => ex.id === exerciseId);
-    const override = routineAssignAddedExerciseOverridesByDay[dayId]?.[exerciseId];
-    setEditAssignExerciseId(null);
-    setEditAssignTemporaryTarget({ dayId, exerciseId });
+    const override = routineAssignExerciseOverridesByDay[dayKey]?.[exerciseId];
+    setEditAssignExerciseTarget({ dayKey, exerciseId });
     setEditAssignArrows(override?.arrows_override ?? base?.arrows_count ?? "");
     setEditAssignDistance(override?.distance_override_m ?? Number(base?.distance_m ?? 0) ?? "");
     setEditAssignDescription(override?.description_override ?? base?.description ?? "");
     setEditAssignExerciseModalOpen(true);
   };
 
-  const openAddExerciseForDay = (dayId: number) => {
-    setAddExerciseTargetDayId(dayId);
+  const openAddExerciseForDay = (dayKey: string) => {
+    setAddExerciseTargetDayKey(dayKey);
     setAddExerciseSearch("");
     setAddExerciseDayModalOpen(true);
   };
 
-  const addTemporaryExerciseToDay = (dayId: number, exerciseId: number) => {
-    if (!selectedRoutineToAssign) return;
-    const targetDay = selectedRoutineToAssign.days.find((day) => day.id === dayId);
-    if (!targetDay) return;
-    const alreadyInDay = targetDay.exercises.some((dayExercise) => dayExercise.exercise_id === exerciseId);
-    if (alreadyInDay) return;
-    setRoutineAssignAddedExercisesByDay((prev) => {
-      const current = prev[dayId] || [];
+  const addTemporaryExerciseToDay = (dayKey: string, exerciseId: number) => {
+    setRoutineAssignExercisesByDay((prev) => {
+      const current = prev[dayKey] || [];
       if (current.includes(exerciseId)) return prev;
-      return { ...prev, [dayId]: [...current, exerciseId] };
+      return { ...prev, [dayKey]: [...current, exerciseId] };
     });
     setAddExerciseDayModalOpen(false);
-    setAddExerciseTargetDayId(null);
+    setAddExerciseTargetDayKey(null);
     setAddExerciseSearch("");
   };
 
@@ -1250,33 +1345,79 @@ function App() {
   };
 
   const saveEditAssignExercise = () => {
-    if (editAssignExerciseId) {
-      setRoutineAssignExistingOverrides((prev) => ({
-        ...prev,
-        [editAssignExerciseId]: {
+    if (!editAssignExerciseTarget) return;
+    setRoutineAssignExerciseOverridesByDay((prev) => ({
+      ...prev,
+      [editAssignExerciseTarget.dayKey]: {
+        ...(prev[editAssignExerciseTarget.dayKey] || {}),
+        [editAssignExerciseTarget.exerciseId]: {
           arrows_override: editAssignArrows === "" ? null : Number(editAssignArrows),
           distance_override_m: editAssignDistance === "" ? null : Number(editAssignDistance),
           description_override: editAssignDescription || null,
         },
-      }));
-    } else if (editAssignTemporaryTarget) {
-      setRoutineAssignAddedExerciseOverridesByDay((prev) => ({
-        ...prev,
-        [editAssignTemporaryTarget.dayId]: {
-          ...(prev[editAssignTemporaryTarget.dayId] || {}),
-          [editAssignTemporaryTarget.exerciseId]: {
-            arrows_override: editAssignArrows === "" ? null : Number(editAssignArrows),
-            distance_override_m: editAssignDistance === "" ? null : Number(editAssignDistance),
-            description_override: editAssignDescription || null,
-          },
-        },
-      }));
-    } else {
-      return;
-    }
+      },
+    }));
     setEditAssignExerciseModalOpen(false);
-    setEditAssignExerciseId(null);
-    setEditAssignTemporaryTarget(null);
+    setEditAssignExerciseTarget(null);
+  };
+
+  const addAssignRoutineDay = () => {
+    if (routineAssignDayCount >= 7) return;
+    const nextCount = routineAssignDayCount + 1;
+    const nextKey = `day_${nextCount}`;
+    setRoutineAssignDayCount(nextCount);
+    setRoutineAssignExercisesByDay((prev) => ({ ...prev, [nextKey]: prev[nextKey] || [] }));
+    setPendingScrollAssignSummaryToBottom(true);
+  };
+
+  const requestDeleteAssignRoutineDay = (dayNumber: number) => {
+    if (routineAssignDayCount <= 1) return;
+    setDeleteAssignDayTargetNumber(dayNumber);
+    setDeleteAssignDayConfirmOpen(true);
+  };
+
+  const confirmDeleteAssignRoutineDay = () => {
+    if (!deleteAssignDayTargetNumber || routineAssignDayCount <= 1) return;
+    const target = deleteAssignDayTargetNumber;
+    const nextCount = routineAssignDayCount - 1;
+    setRoutineAssignExercisesByDay((prev) => {
+      const next: Record<string, number[]> = {};
+      let writeIdx = 1;
+      for (let readIdx = 1; readIdx <= routineAssignDayCount; readIdx++) {
+        if (readIdx === target) continue;
+        next[`day_${writeIdx}`] = [...(prev[`day_${readIdx}`] || [])];
+        writeIdx += 1;
+      }
+      return next;
+    });
+    setRoutineAssignExerciseOverridesByDay((prev) => {
+      const next: Record<string, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
+      let writeIdx = 1;
+      for (let readIdx = 1; readIdx <= routineAssignDayCount; readIdx++) {
+        if (readIdx === target) continue;
+        const source = prev[`day_${readIdx}`];
+        if (source) next[`day_${writeIdx}`] = { ...source };
+        writeIdx += 1;
+      }
+      return next;
+    });
+    setRoutineAssignDayCount(nextCount);
+    setDeleteAssignDayConfirmOpen(false);
+    setDeleteAssignDayTargetNumber(null);
+  };
+
+  const removeAssignExerciseFromDay = (dayKey: string, exerciseId: number) => {
+    setRoutineAssignExercisesByDay((prev) => ({
+      ...prev,
+      [dayKey]: (prev[dayKey] || []).filter((id) => id !== exerciseId),
+    }));
+    setRoutineAssignExerciseOverridesByDay((prev) => {
+      const dayOverrides = prev[dayKey] || {};
+      if (!(exerciseId in dayOverrides)) return prev;
+      const nextDayOverrides = { ...dayOverrides };
+      delete nextDayOverrides[exerciseId];
+      return { ...prev, [dayKey]: nextDayOverrides };
+    });
   };
 
   const handleAssignExistingRoutine = async () => {
@@ -1292,9 +1433,9 @@ function App() {
         end_date: week.end,
         status: "active",
         notes: JSON.stringify({
-          temporary_overrides: routineAssignExistingOverrides,
-          temporary_added_exercises_by_day: routineAssignAddedExercisesByDay,
-          temporary_added_exercise_overrides_by_day: routineAssignAddedExerciseOverridesByDay,
+          temporary_day_count: routineAssignDayCount,
+          temporary_exercises_by_day: routineAssignExercisesByDay,
+          temporary_exercise_overrides_by_day: routineAssignExerciseOverridesByDay,
         }),
       });
       if (ok) closeAssignRoutineModal();
@@ -1702,7 +1843,7 @@ function App() {
                     <Stack spacing={6} flex="1">
                       {sortedRoutines.map((routine) => {
                         const orderedDays = [...routine.days].sort((a, b) => a.day_number - b.day_number);
-                        const daysPreview = orderedDays.map((day) => day.name || formatDay(day)).join(" ● ");
+                        const daysPreview = `${orderedDays.length} Días`;
                         const weekArrowsTotal = getRoutineWeekArrows(routine);
                         return (
                           <Box
@@ -1728,7 +1869,7 @@ function App() {
                                     Flechas totales: {weekArrowsTotal}
                                   </Text>
                                 </HStack>
-                                <Text color="gray.500">{daysPreview || "Sin días asignados"}</Text>
+                                <Text color="gray.500">{daysPreview}</Text>
                                 <Collapse in={expandedRoutine === routine.id} animateOpacity>
                                   <Stack spacing={3} pt={2}>
                                     {orderedDays.map((day) => (
@@ -2399,14 +2540,28 @@ function App() {
         </Modal>
         <Modal isOpen={createRoutineModalOpen} onClose={closeCreateRoutineModal} isCentered>
           <ModalOverlay />
-          <ModalContent maxW={routineModalMaxW} maxH="90vh" transition="max-width 0.3s ease" overflowY="auto" overflowX="hidden">
+          <ModalContent maxW={routineModalMaxW} maxH="86vh" transition="max-width 0.3s ease, max-height 0.3s ease" overflowY="auto" overflowX="hidden">
             <Box h={routineModalBodyHeight ? `${routineModalBodyHeight}px` : `${routineModalMinHeight}px`} transition="height 0.3s ease" overflow="hidden">
               <Box px={6} py={6}>
                 {routineModalStep === 0 && (
                   <Stack ref={routineStepRef} spacing={6} animation={`${routineStepSlide} 0.3s ease`}>
                   <Heading size="md">{editingRoutineId ? "Editar nombre de la rutina" : "Ingrese el nombre de la rutina"}</Heading>
                   <FormControl>
-                    <Input value={routineName} onChange={(e) => setRoutineName(e.target.value)} placeholder="Nombre de rutina" />
+                    <Input
+                      value={routineName}
+                      onChange={(e) => setRoutineName(e.target.value)}
+                      placeholder="Nombre de rutina"
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter") return;
+                        if (!routineName.trim()) return;
+                        e.preventDefault();
+                        setRoutineDayCount((prev) => Math.max(1, Math.min(7, prev)));
+                        setRoutineDayCursor(0);
+                        setRoutineExerciseSearch("");
+                        setCreateRoutineError(null);
+                        setRoutineModalStep(2);
+                      }}
+                    />
                   </FormControl>
                   <HStack spacing={3} justify="flex-end">
                     {routineAssignStudentId && !editingRoutineId && (
@@ -2420,7 +2575,13 @@ function App() {
                       _hover={{ bg: "gray.800" }}
                       _active={{ bg: "gray.900" }}
                       isDisabled={!routineName.trim()}
-                      onClick={() => setRoutineModalStep(1)}
+                      onClick={() => {
+                        setRoutineDayCount((prev) => Math.max(1, Math.min(7, prev)));
+                        setRoutineDayCursor(0);
+                        setRoutineExerciseSearch("");
+                        setCreateRoutineError(null);
+                        setRoutineModalStep(2);
+                      }}
                     >
                       Siguiente
                     </Button>
@@ -2432,55 +2593,6 @@ function App() {
                       _hover={{ bg: "gray.100" }}
                       onClick={closeCreateRoutineModal}
                     >
-                      Cancelar
-                    </Button>
-                  </HStack>
-                  </Stack>
-                )}
-                {routineModalStep === 1 && (
-                  <Stack ref={routineStepRef} spacing={6} animation={`${routineStepSlide} 0.3s ease`}>
-                  <Heading size="md">Seleccione los días de la rutina</Heading>
-                  <SimpleGrid columns={{ base: 3, md: 7 }} spacing={3}>
-                    {routineDayOptions.map((day) => {
-                      const isSelected = routineSelectedDays.includes(day.key);
-                      return (
-                        <Button
-                          key={day.key}
-                          onClick={() => toggleRoutineDay(day.key)}
-                          variant="unstyled"
-                          borderRadius="full"
-                          bg="transparent"
-                          color={isSelected ? "white" : "black"}
-                          _hover={{ bg: "transparent" }}
-                          _active={{ bg: "transparent" }}
-                          display="inline-flex"
-                          alignItems="center"
-                          justifyContent="center"
-                          h="56px"
-                          w="56px"
-                          minW="56px"
-                          p={0}
-                        >
-                          <Image src={isSelected ? day.iconFilled : day.icon} alt={day.label} boxSize="56px" objectFit="contain" />
-                        </Button>
-                      );
-                    })}
-                  </SimpleGrid>
-                  <HStack spacing={3} justify="flex-end">
-                    <Button variant="outline" borderColor="gray.300" onClick={() => setRoutineModalStep(0)}>
-                      Volver
-                    </Button>
-                    <Button
-                      bg="black"
-                      color="white"
-                      _hover={{ bg: "gray.800" }}
-                      _active={{ bg: "gray.900" }}
-                      isDisabled={orderedSelectedRoutineDays.length === 0}
-                      onClick={handleRoutineDaysContinue}
-                    >
-                      Continuar
-                    </Button>
-                    <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={closeCreateRoutineModal}>
                       Cancelar
                     </Button>
                   </HStack>
@@ -2567,7 +2679,7 @@ function App() {
                     </Alert>
                   )}
                   <HStack spacing={3} justify="flex-end">
-                    <Button variant="outline" borderColor="gray.300" onClick={() => setRoutineModalStep(1)}>
+                    <Button variant="outline" borderColor="gray.300" onClick={() => setRoutineModalStep(0)}>
                       Volver
                     </Button>
                     <Button
@@ -2579,7 +2691,7 @@ function App() {
                       isLoading={createRoutineLoading}
                       onClick={handleRoutineExerciseContinue}
                     >
-                      {routineDayCursor < orderedSelectedRoutineDays.length - 1 ? "Siguiente" : "Ver resumen"}
+                      Siguiente
                     </Button>
                     <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={closeCreateRoutineModal}>
                       Cancelar
@@ -2593,13 +2705,13 @@ function App() {
                     <Stack
                       ref={routineSummaryListRef}
                       spacing={3}
-                      maxH="52vh"
+                      maxH={`${routineSummaryListMaxH}px`}
                       overflowY="auto"
                       pr={1}
                       onWheel={handleRoutineSummaryWheel}
                       sx={{ overscrollBehaviorY: "contain" }}
                     >
-                      {orderedSelectedRoutineDays.map((day) => (
+                      {routineBuilderDays.map((day) => (
                         <Box key={`summary-${day.key}`} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={3}>
                           <Text color="gray.800" fontWeight="medium">
                             {day.label}
@@ -2663,24 +2775,64 @@ function App() {
                               <Text fontSize="sm" color="gray.500">Sin ejercicios</Text>
                             )}
                           </Stack>
-                          <Button
-                            mt={3}
-                            size="sm"
-                            variant="outline"
-                            borderColor="gray.300"
-                            borderRadius="lg"
-                            onClick={() => openRoutineCreateAddExercise(day.key)}
-                            leftIcon={
-                              <Box as="svg" viewBox="0 0 24 24" boxSize="16px" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M5 12h14" />
-                                <path d="M12 5v14" />
-                              </Box>
-                            }
-                          >
-                            Agregar ejercicio
-                          </Button>
+                          <HStack mt={3} justify="space-between" align="center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              borderColor="gray.300"
+                              borderRadius="lg"
+                              onClick={() => openRoutineCreateAddExercise(day.key)}
+                              leftIcon={
+                                <Box as="svg" viewBox="0 0 24 24" boxSize="16px" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M5 12h14" />
+                                  <path d="M12 5v14" />
+                                </Box>
+                              }
+                            >
+                              Agregar ejercicio
+                            </Button>
+                            {routineDayCount > 1 && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                borderColor="gray.300"
+                                borderRadius="lg"
+                                color="black"
+                                _hover={{ bg: "red.700", borderColor: "red.800", color: "white" }}
+                                onClick={() => requestDeleteRoutineDay(day.dayNumber)}
+                                leftIcon={
+                                  <Box
+                                    as="svg"
+                                    viewBox="0 0 24 24"
+                                    boxSize="16px"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <path d="M5 12h14" />
+                                  </Box>
+                                }
+                              >
+                                Eliminar día
+                              </Button>
+                            )}
+                          </HStack>
                         </Box>
                       ))}
+                      {routineDayCount < 7 && (
+                        <HStack justify="center">
+                          <Button
+                            variant="ghost"
+                            color="gray.600"
+                            _hover={{ bg: "gray.100", color: "gray.700" }}
+                            onClick={handleAddRoutineDay}
+                          >
+                            Agregar día
+                          </Button>
+                        </HStack>
+                      )}
                     </Stack>
                     {createRoutineError && (
                       <Alert status="error" borderRadius="md">
@@ -2693,7 +2845,7 @@ function App() {
                         variant="outline"
                         borderColor="gray.300"
                         onClick={() => {
-                          setRoutineDayCursor(Math.max(orderedSelectedRoutineDays.length - 1, 0));
+                          setRoutineDayCursor(Math.max(routineBuilderDays.length - 1, 0));
                           setRoutineModalStep(2);
                         }}
                       >
@@ -2705,7 +2857,7 @@ function App() {
                         _hover={{ bg: "gray.800" }}
                         _active={{ bg: "gray.900" }}
                         isLoading={createRoutineLoading}
-                        isDisabled={orderedSelectedRoutineDays.some((day) => (routineExercisesByDay[day.key] || []).length === 0)}
+                        isDisabled={routineBuilderDays.some((day) => (routineExercisesByDay[day.key] || []).length === 0)}
                         onClick={handleCreateOrUpdateRoutineFromSummary}
                       >
                         {editingRoutineId ? "Guardar cambios" : "Crear rutina"}
@@ -2845,6 +2997,40 @@ function App() {
                 </Button>
                 <Button bg="black" color="white" _hover={{ bg: "gray.800" }} _active={{ bg: "gray.900" }} onClick={saveRoutineCreateEditExercise}>
                   Guardar
+                </Button>
+              </HStack>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+        <Modal isOpen={deleteRoutineDayConfirmOpen} onClose={() => setDeleteRoutineDayConfirmOpen(false)} isCentered>
+          <ModalOverlay />
+          <ModalContent maxW="420px">
+            <ModalHeader>¿Eliminar día?</ModalHeader>
+            <ModalBody>
+              <Text color="gray.700">
+                Se eliminará {deleteRoutineDayTargetNumber ? `Día ${deleteRoutineDayTargetNumber}` : "este día"} de la rutina.
+              </Text>
+            </ModalBody>
+            <ModalFooter>
+              <HStack spacing={3}>
+                <Button
+                  bg="white"
+                  color="black"
+                  borderColor="gray.300"
+                  borderWidth="1px"
+                  _hover={{ bg: "gray.100" }}
+                  onClick={confirmDeleteRoutineDay}
+                >
+                  Eliminar
+                </Button>
+                <Button
+                  bg="black"
+                  color="white"
+                  _hover={{ bg: "gray.800" }}
+                  _active={{ bg: "gray.900" }}
+                  onClick={() => setDeleteRoutineDayConfirmOpen(false)}
+                >
+                  Cancelar
                 </Button>
               </HStack>
             </ModalFooter>
@@ -3148,93 +3334,127 @@ function App() {
                 </Stack>
               )}
               {assignRoutineStep === "existing_preview" && selectedRoutineToAssign && (
-                <Stack spacing={3} maxH="55vh" overflowY="auto" pr={1}>
-                  {[...selectedRoutineToAssign.days]
-                    .sort((a, b) => a.day_number - b.day_number)
-                    .map((day) => {
-                      const temporaryAdded = (routineAssignAddedExercisesByDay[day.id] || [])
-                        .map((exerciseId) => exercises.find((ex) => ex.id === exerciseId))
-                        .filter((exercise): exercise is Exercise => Boolean(exercise));
-
-                      return (
-                        <Box key={day.id} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={3}>
-                          <Text color="gray.800" fontWeight="medium">
-                            {day.name || formatDay(day)}
-                          </Text>
-                          <Stack spacing={1} mt={2}>
-                            {[...day.exercises]
-                              .sort((a, b) => a.sort_order - b.sort_order)
-                              .map((dayExercise) => {
-                                const base = exercises.find((ex) => ex.id === dayExercise.exercise_id);
-                                const override = routineAssignExistingOverrides[dayExercise.id];
-                                return (
-                                  <HStack key={dayExercise.id} spacing={2} align="center">
-                                    <Stack spacing={0} flex="1">
-                                      <Text fontSize="sm" color="gray.700">
-                                        {base?.name || `Ejercicio #${dayExercise.exercise_id}`}
-                                      </Text>
-                                      <Text fontSize="xs" color="gray.500">
-                                        Flechas: {override?.arrows_override ?? dayExercise.arrows_override ?? base?.arrows_count ?? "-"} | Distancia:{" "}
-                                        {override?.distance_override_m ?? dayExercise.distance_override_m ?? Number(base?.distance_m ?? 0) ?? "-"} m
-                                      </Text>
-                                    </Stack>
-                                    <Button
-                                      size={actionIconButtonSize}
-                                      variant="ghost"
-                                      minW="auto"
-                                      px={2}
-                                      onClick={() => openEditAssignExercise(dayExercise)}
-                                    >
-                                      <Image src={editIconUrl} alt="Editar" boxSize={actionIconSize} />
-                                    </Button>
-                                  </HStack>
-                                );
-                              })}
-
-                            {temporaryAdded.map((tempExercise) => {
-                              const tempOverride = routineAssignAddedExerciseOverridesByDay[day.id]?.[tempExercise.id];
-                              return (
-                              <HStack key={`temp-${day.id}-${tempExercise.id}`} spacing={2} align="center">
-                                <Stack spacing={0} flex="1">
-                                  <Text fontSize="sm" color="gray.700">
-                                    {tempExercise.name}
-                                  </Text>
-                                  <Text fontSize="xs" color="gray.500">
-                                    Flechas: {tempOverride?.arrows_override ?? tempExercise.arrows_count} | Distancia: {tempOverride?.distance_override_m ?? Number(tempExercise.distance_m)} m
-                                  </Text>
-                                </Stack>
+                <Stack
+                  ref={assignRoutineSummaryListRef}
+                  spacing={3}
+                  maxH={`${routineAssignSummaryListMaxH}px`}
+                  overflowY="auto"
+                  pr={1}
+                  onWheel={handleAssignRoutineSummaryWheel}
+                  sx={{ overscrollBehaviorY: "contain" }}
+                >
+                  {routineAssignBuilderDays.map((day) => (
+                    <Box key={`assign-summary-${day.key}`} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={3}>
+                      <Text color="gray.800" fontWeight="medium">
+                        {day.label}
+                      </Text>
+                      <Stack spacing={1} mt={2}>
+                        {(routineAssignExercisesByDay[day.key] || []).map((exerciseId) => {
+                          const base = exercises.find((ex) => ex.id === exerciseId);
+                          const override = routineAssignExerciseOverridesByDay[day.key]?.[exerciseId];
+                          return (
+                            <HStack key={`assign-summary-ex-${day.key}-${exerciseId}`} spacing={2} align="center">
+                              <Stack spacing={0} flex="1">
+                                <Text fontSize="sm" color="gray.700">
+                                  {base?.name || `Ejercicio #${exerciseId}`}
+                                </Text>
+                                <Text fontSize="xs" color="gray.500">
+                                  Flechas: {override?.arrows_override ?? base?.arrows_count ?? "-"} | Distancia: {override?.distance_override_m ?? Number(base?.distance_m ?? 0) ?? "-"} m
+                                </Text>
+                              </Stack>
+                              <HStack spacing={1}>
                                 <Button
                                   size={actionIconButtonSize}
                                   variant="ghost"
                                   minW="auto"
                                   px={2}
-                                  onClick={() => openEditAssignAddedExercise(day.id, tempExercise.id)}
+                                  onClick={() => openEditAssignExercise(day.key, exerciseId)}
                                 >
                                   <Image src={editIconUrl} alt="Editar" boxSize={actionIconSize} />
                                 </Button>
+                                <Button
+                                  size={actionIconButtonSize}
+                                  variant="outline"
+                                  borderRadius="xl"
+                                  borderColor="gray.300"
+                                  color="black"
+                                  _hover={{ bg: "red.700", borderColor: "red.800", color: "white" }}
+                                  onClick={() => removeAssignExerciseFromDay(day.key, exerciseId)}
+                                >
+                                  <Box
+                                    as="svg"
+                                    viewBox="0 0 24 24"
+                                    boxSize={actionIconSize}
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <path d="M10 11v6" />
+                                    <path d="M14 11v6" />
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                                    <path d="M3 6h18" />
+                                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                  </Box>
+                                </Button>
                               </HStack>
-                              );
-                            })}
-                          </Stack>
+                            </HStack>
+                          );
+                        })}
+                        {(routineAssignExercisesByDay[day.key] || []).length === 0 && (
+                          <Text fontSize="sm" color="gray.500">Sin ejercicios</Text>
+                        )}
+                      </Stack>
+                      <HStack mt={3} justify="space-between" align="center">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          borderColor="gray.300"
+                          borderRadius="lg"
+                          onClick={() => openAddExerciseForDay(day.key)}
+                          leftIcon={
+                            <Box as="svg" viewBox="0 0 24 24" boxSize="16px" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M5 12h14" />
+                              <path d="M12 5v14" />
+                            </Box>
+                          }
+                        >
+                          Agregar ejercicio
+                        </Button>
+                        {routineAssignDayCount > 1 && (
                           <Button
-                            mt={3}
                             size="sm"
                             variant="outline"
                             borderColor="gray.300"
                             borderRadius="lg"
-                            onClick={() => openAddExerciseForDay(day.id)}
+                            color="black"
+                            _hover={{ bg: "red.700", borderColor: "red.800", color: "white" }}
+                            onClick={() => requestDeleteAssignRoutineDay(day.dayNumber)}
                             leftIcon={
                               <Box as="svg" viewBox="0 0 24 24" boxSize="16px" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M5 12h14" />
-                                <path d="M12 5v14" />
                               </Box>
                             }
                           >
-                            Agregar ejercicio
+                            Eliminar día
                           </Button>
-                        </Box>
-                      );
-                    })}
+                        )}
+                      </HStack>
+                    </Box>
+                  ))}
+                  <HStack justify="center">
+                    {routineAssignDayCount < 7 && (
+                      <Button
+                        variant="ghost"
+                        color="gray.600"
+                        _hover={{ bg: "gray.100", color: "gray.700" }}
+                        onClick={addAssignRoutineDay}
+                      >
+                        Agregar día
+                      </Button>
+                    )}
+                  </HStack>
                 </Stack>
               )}
               {assignRoutineError && (
@@ -3279,8 +3499,7 @@ function App() {
           isOpen={editAssignExerciseModalOpen}
           onClose={() => {
             setEditAssignExerciseModalOpen(false);
-            setEditAssignExerciseId(null);
-            setEditAssignTemporaryTarget(null);
+            setEditAssignExerciseTarget(null);
           }}
           isCentered
         >
@@ -3326,7 +3545,13 @@ function App() {
             </ModalBody>
             <ModalFooter>
               <HStack spacing={3}>
-                <Button variant="ghost" onClick={() => setEditAssignExerciseModalOpen(false)}>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setEditAssignExerciseModalOpen(false);
+                    setEditAssignExerciseTarget(null);
+                  }}
+                >
                   Cancelar
                 </Button>
                 <Button bg="black" color="white" _hover={{ bg: "gray.800" }} _active={{ bg: "gray.900" }} onClick={saveEditAssignExercise}>
@@ -3372,12 +3597,8 @@ function App() {
                       );
                     })
                     .filter((exercise) => {
-                      if (!selectedRoutineToAssign || !addExerciseTargetDayId) return false;
-                      const day = selectedRoutineToAssign.days.find((value) => value.id === addExerciseTargetDayId);
-                      if (!day) return false;
-                      const existsInRoutine = day.exercises.some((item) => item.exercise_id === exercise.id);
-                      const existsInTemporary = (routineAssignAddedExercisesByDay[addExerciseTargetDayId] || []).includes(exercise.id);
-                      return !existsInRoutine && !existsInTemporary;
+                      if (!addExerciseTargetDayKey) return false;
+                      return !(routineAssignExercisesByDay[addExerciseTargetDayKey] || []).includes(exercise.id);
                     })
                     .map((exercise) => (
                       <HStack key={`add-day-ex-${exercise.id}`} justify="space-between" borderWidth="1px" borderColor="gray.200" borderRadius="md" p={2}>
@@ -3391,7 +3612,7 @@ function App() {
                           size="sm"
                           variant="outline"
                           borderColor="gray.300"
-                          onClick={() => addExerciseTargetDayId && addTemporaryExerciseToDay(addExerciseTargetDayId, exercise.id)}
+                          onClick={() => addExerciseTargetDayKey && addTemporaryExerciseToDay(addExerciseTargetDayKey, exercise.id)}
                         >
                           Agregar
                         </Button>
@@ -3404,6 +3625,40 @@ function App() {
               <Button variant="ghost" onClick={() => setAddExerciseDayModalOpen(false)}>
                 Cancelar
               </Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+        <Modal isOpen={deleteAssignDayConfirmOpen} onClose={() => setDeleteAssignDayConfirmOpen(false)} isCentered>
+          <ModalOverlay />
+          <ModalContent maxW="420px">
+            <ModalHeader>¿Eliminar día?</ModalHeader>
+            <ModalBody>
+              <Text color="gray.700">
+                Se eliminará {deleteAssignDayTargetNumber ? `Día ${deleteAssignDayTargetNumber}` : "este día"} de la asignación temporal.
+              </Text>
+            </ModalBody>
+            <ModalFooter>
+              <HStack spacing={3}>
+                <Button
+                  bg="white"
+                  color="black"
+                  borderColor="gray.300"
+                  borderWidth="1px"
+                  _hover={{ bg: "gray.100" }}
+                  onClick={confirmDeleteAssignRoutineDay}
+                >
+                  Eliminar
+                </Button>
+                <Button
+                  bg="black"
+                  color="white"
+                  _hover={{ bg: "gray.800" }}
+                  _active={{ bg: "gray.900" }}
+                  onClick={() => setDeleteAssignDayConfirmOpen(false)}
+                >
+                  Cancelar
+                </Button>
+              </HStack>
             </ModalFooter>
           </ModalContent>
         </Modal>

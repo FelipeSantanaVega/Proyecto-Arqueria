@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .deps import SessionLocal, get_db, settings
-from .routine_retention import ensure_routine_schema, purge_expired_temporary_routines
+from .routine_retention import ensure_routine_schema
 from .routers import exercises, students, routines, assignments, auth
 from .student_retention import ensure_student_retention_schema, purge_inactive_students
 
@@ -32,7 +32,6 @@ def startup_maintenance():
         ensure_student_retention_schema(db)
         ensure_routine_schema(db)
         purge_inactive_students(db)
-        purge_expired_temporary_routines(db)
     finally:
         db.close()
 

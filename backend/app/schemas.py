@@ -146,6 +146,10 @@ class AssignmentCreate(BaseModel):
     notes: Optional[str] = None
 
 
+class AssignmentStatusUpdate(BaseModel):
+    status: str = Field(pattern="^(active|paused|finished)$")
+
+
 class AssignmentOut(BaseModel):
     id: int
     student_id: int
