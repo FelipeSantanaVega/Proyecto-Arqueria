@@ -136,6 +136,25 @@ function formatDateEs(value?: string | null): string {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+function toIsoLocal(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getTodayIsoLocal(): string {
+  return toIsoLocal(new Date());
+}
+
+function getRoutineEndDateFromStart(startDate: string): string {
+  const [yearRaw, monthRaw, dayRaw] = startDate.split("-").map(Number);
+  if (!yearRaw || !monthRaw || !dayRaw) return startDate;
+  const date = new Date(yearRaw, monthRaw - 1, dayRaw);
+  date.setDate(date.getDate() + 6);
+  return toIsoLocal(date);
+}
+
 function parseRoleFromToken(rawToken: string | null): string | null {
   if (!rawToken) return null;
   try {
@@ -150,9 +169,13 @@ function parseRoleFromToken(rawToken: string | null): string | null {
   }
 }
 
+function getStoredToken(): string | null {
+  return localStorage.getItem("token") ?? sessionStorage.getItem("token");
+}
+
 function App() {
   const [view, setView] = useState<"dashboard" | "login" | "professor">(() =>
-    localStorage.getItem("token") ? "professor" : "login",
+    getStoredToken() ? "professor" : "login",
   );
   const [profSection, setProfSection] = useState<"administrar_rutinas" | "perfil" | "rutina" | "ejercicio" | "alumno">("administrar_rutinas");
   const [expandedExercise, setExpandedExercise] = useState<number | null>(null);
@@ -194,10 +217,11 @@ function App() {
   const [createRoutineError, setCreateRoutineError] = useState<string | null>(null);
   const [assignRoutineModalOpen, setAssignRoutineModalOpen] = useState(false);
   const [assignRoutineStudent, setAssignRoutineStudent] = useState<Student | null>(null);
-  const [assignRoutineStep, setAssignRoutineStep] = useState<"choice" | "existing_list" | "existing_preview">("choice");
+  const [assignRoutineStep, setAssignRoutineStep] = useState<"choice" | "existing_list" | "existing_preview" | "existing_dates">("choice");
   const [selectedRoutineToAssign, setSelectedRoutineToAssign] = useState<Routine | null>(null);
   const [assignRoutineError, setAssignRoutineError] = useState<string | null>(null);
   const [assignRoutineLoading, setAssignRoutineLoading] = useState(false);
+  const [assignmentStartDate, setAssignmentStartDate] = useState<string>(getTodayIsoLocal());
   const [replaceAssignModalOpen, setReplaceAssignModalOpen] = useState(false);
   const [replaceAssignLoading, setReplaceAssignLoading] = useState(false);
   const [replaceAssignError, setReplaceAssignError] = useState<string | null>(null);
@@ -232,6 +256,7 @@ function App() {
   const routineSummaryListRef = useRef<HTMLDivElement | null>(null);
   const routineCreateAddExerciseListRef = useRef<HTMLDivElement | null>(null);
   const assignRoutineSummaryListRef = useRef<HTMLDivElement | null>(null);
+  const assignmentStartDatePickerRef = useRef<HTMLInputElement | null>(null);
   const [createName, setCreateName] = useState("");
   const [createArrows, setCreateArrows] = useState<number | "">("");
   const [createDistance, setCreateDistance] = useState<number | "">("");
@@ -287,8 +312,9 @@ function App() {
   const [preAssignConflictError, setPreAssignConflictError] = useState<string | null>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem("token"));
-  const [userRole, setUserRole] = useState<string | null>(() => parseRoleFromToken(localStorage.getItem("token")));
+  const [token, setToken] = useState<string | null>(() => getStoredToken());
+  const [userRole, setUserRole] = useState<string | null>(() => parseRoleFromToken(getStoredToken()));
+  const [rememberMe, setRememberMe] = useState<boolean>(() => localStorage.getItem("remember_me") !== "0");
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [health, setHealth] = useState<Health | null>(null);
@@ -470,17 +496,23 @@ function App() {
         }),
       });
       setExercises((prev) => [...prev, created]);
-      setCreateModalOpen(false);
-      setCreateName("");
-      setCreateArrows("");
-      setCreateDistance("");
-      setCreateDescription("");
+      closeCreateExerciseModal();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al crear";
       setCreateError(msg);
     } finally {
       setCreateLoading(false);
     }
+  };
+
+  const closeCreateExerciseModal = () => {
+    setCreateModalOpen(false);
+    setCreateName("");
+    setCreateArrows("");
+    setCreateDistance("");
+    setCreateDescription("");
+    setCreateError(null);
+    setCreateLoading(false);
   };
 
   const handleCreateStudentSave = async () => {
@@ -663,13 +695,13 @@ function App() {
   );
   const routineModalMaxW = routineModalStep === 0 ? "520px" : routineModalStep === 1 ? "640px" : "760px";
   const routineModalMinHeight = routineModalStep === 0
-    ? 205
+    ? 320
     : routineModalStep === 1
       ? 220
       : routineModalStep === 2
         ? 300
         : Math.min(340 + Math.max(0, routineDayCount - 1) * 55, 760);
-  const routineModalMaxBodyHeight = routineModalStep === 0 ? 320 : routineModalStep === 1 ? 420 : routineModalStep === 2 ? 620 : 760;
+  const routineModalMaxBodyHeight = routineModalStep === 0 ? 420 : routineModalStep === 1 ? 420 : routineModalStep === 2 ? 620 : 760;
   const actionIconButtonSize = { base: "xs", xl: "sm", "2xl": "md" } as const;
   const actionIconSize = "15px";
   const filteredRoutineExercises = useMemo(() => {
@@ -692,6 +724,10 @@ function App() {
 
   useLayoutEffect(() => {
     if (!createRoutineModalOpen || !routineStepRef.current) return;
+    if (routineModalStep === 0) {
+      setRoutineModalBodyHeight(routineModalMinHeight);
+      return;
+    }
     const contentHeight = Math.ceil(routineStepRef.current.scrollHeight + 48);
     const nextHeight = Math.max(
       routineModalMinHeight,
@@ -716,6 +752,7 @@ function App() {
 
   useEffect(() => {
     if (!createRoutineModalOpen || !routineStepRef.current || typeof ResizeObserver === "undefined") return;
+    if (routineModalStep === 0) return;
     const node = routineStepRef.current;
     const observer = new ResizeObserver(() => {
       const contentHeight = Math.ceil(node.scrollHeight + 48);
@@ -729,18 +766,10 @@ function App() {
     return () => observer.disconnect();
   }, [createRoutineModalOpen, routineModalStep, routineDayCursor, routineModalMinHeight, routineModalMaxBodyHeight]);
 
-  const getWeekRange = () => {
-    const now = new Date();
-    const day = now.getDay();
-    const mondayDiff = day === 0 ? -6 : 1 - day;
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() + mondayDiff);
-    weekStart.setHours(0, 0, 0, 0);
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 6);
-    const toIso = (d: Date) => d.toISOString().slice(0, 10);
-    return { start: toIso(weekStart), end: toIso(weekEnd) };
-  };
+  const assignmentEndDate = useMemo(
+    () => getRoutineEndDateFromStart(assignmentStartDate),
+    [assignmentStartDate],
+  );
 
   const getRoutineDayArrows = (day: RoutineDay) =>
     day.exercises.reduce((sum, dayExercise) => {
@@ -754,6 +783,12 @@ function App() {
     setAdminAssignSearch("");
     setAdminAssignSelectedStudentId(null);
     setAdminAssignModalOpen(true);
+  };
+
+  const closeAdminAssignModal = () => {
+    setAdminAssignModalOpen(false);
+    setAdminAssignSearch("");
+    setAdminAssignSelectedStudentId(null);
   };
 
   const handleAdminAssignContinue = () => {
@@ -794,6 +829,7 @@ function App() {
     setSelectedRoutineToAssign(null);
     setAssignRoutineError(null);
     setAssignRoutineLoading(false);
+    setAssignmentStartDate(getTodayIsoLocal());
     resetAssignRoutineDraft();
     setAssignRoutineModalOpen(true);
   };
@@ -805,6 +841,7 @@ function App() {
     setSelectedRoutineToAssign(null);
     setAssignRoutineError(null);
     setAssignRoutineLoading(false);
+    setAssignmentStartDate(getTodayIsoLocal());
     resetAssignRoutineDraft();
     setReplaceAssignError(null);
   };
@@ -826,6 +863,7 @@ function App() {
       setSelectedRoutineToAssign(null);
       setAssignRoutineError(null);
       setAssignRoutineLoading(false);
+      setAssignmentStartDate(getTodayIsoLocal());
       resetAssignRoutineDraft();
       setAssignRoutineModalOpen(true);
     } catch (err) {
@@ -853,7 +891,15 @@ function App() {
       }
       const data = (await res.json()) as { access_token: string };
       setToken(data.access_token);
-      localStorage.setItem("token", data.access_token);
+      if (rememberMe) {
+        localStorage.setItem("token", data.access_token);
+        localStorage.setItem("remember_me", "1");
+        sessionStorage.removeItem("token");
+      } else {
+        sessionStorage.setItem("token", data.access_token);
+        localStorage.removeItem("token");
+        localStorage.setItem("remember_me", "0");
+      }
       setView("professor");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al iniciar sesión";
@@ -867,6 +913,7 @@ function App() {
     setToken(null);
     setUserRole(null);
     localStorage.removeItem("token");
+    sessionStorage.removeItem("token");
     setUsername("");
     setPassword("");
     setStudents([]);
@@ -1038,12 +1085,11 @@ function App() {
         });
         setRoutines((prev) => [...prev, createdRoutine]);
         if (routineAssignStudentId) {
-          const week = getWeekRange();
           await tryCreateAssignment({
             student_id: routineAssignStudentId,
             routine_id: createdRoutine.id,
-            start_date: week.start,
-            end_date: week.end,
+            start_date: assignmentStartDate,
+            end_date: assignmentEndDate,
             status: "active",
             notes: "Asignación desde creación rápida de rutina",
           });
@@ -1218,6 +1264,7 @@ function App() {
   const handleChooseCreateRoutineForStudent = () => {
     if (!assignRoutineStudent) return;
     setRoutineAssignStudentId(assignRoutineStudent.id);
+    setAssignmentStartDate(getTodayIsoLocal());
     setAssignRoutineModalOpen(false);
     setAssignRoutineStep("choice");
     setSelectedRoutineToAssign(null);
@@ -1234,6 +1281,7 @@ function App() {
     setSelectedRoutineToAssign(null);
     setAssignRoutineError(null);
     setAssignRoutineLoading(false);
+    setAssignmentStartDate(getTodayIsoLocal());
     setAssignRoutineModalOpen(true);
   };
 
@@ -1425,12 +1473,11 @@ function App() {
     setAssignRoutineLoading(true);
     setAssignRoutineError(null);
     try {
-      const week = getWeekRange();
       const ok = await tryCreateAssignment({
         student_id: assignRoutineStudent.id,
         routine_id: selectedRoutineToAssign.id,
-        start_date: week.start,
-        end_date: week.end,
+        start_date: assignmentStartDate,
+        end_date: assignmentEndDate,
         status: "active",
         notes: JSON.stringify({
           temporary_day_count: routineAssignDayCount,
@@ -1561,57 +1608,127 @@ function App() {
   if (view === "login") {
     return (
       <>
-        <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} minH="100vh">
-          <GridItem
-            display={{ base: "none", md: "block" }}
-            bgImage={`url(${archeryImg})`}
-            bgSize="cover"
-            bgPos="center"
-            m={6}
-            borderRadius="2xl"
-            overflow="hidden"
-          />
-          <GridItem bg="white" display="flex" alignItems="center" justifyContent="center" px={{ base: 6, md: 10 }}>
-            <Box maxW="md" w="full">
-              <Stack spacing={6}>
-                <Stack spacing={2}>
-                  <Heading size="lg" color="black">
-                    Iniciar sesión
-                  </Heading>
-                  <Text color="gray.600">Ingresa tu usuario y contraseña para continuar.</Text>
-                </Stack>
-                <Stack
-                  as="form"
-                  spacing={4}
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!authLoading && username && password) {
-                      void handleLogin();
-                    }
-                  }}
-                >
-                  <FormControl>
-                    <FormLabel color="gray.800">Usuario</FormLabel>
-                    <Input value={username} onChange={(e) => setUsername(e.target.value)} bg="white" borderColor="gray.300" _hover={{ borderColor: "gray.500" }} />
-                  </FormControl>
-                  <FormControl>
-                    <FormLabel color="gray.800">Contraseña</FormLabel>
-                    <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} bg="white" borderColor="gray.300" _hover={{ borderColor: "gray.500" }} />
-                  </FormControl>
-                  {authError && (
-                    <Alert status="error" borderRadius="md">
-                      <AlertIcon />
-                      {authError}
-                    </Alert>
-                  )}
-                  <Button type="submit" bg="black" color="white" _hover={{ bg: "gray.800" }} _active={{ bg: "gray.900" }} size="lg" borderRadius="full" isLoading={authLoading} isDisabled={!username || !password}>
-                    Iniciar sesión
-                  </Button>
-                </Stack>
-              </Stack>
-            </Box>
-          </GridItem>
-        </Grid>
+        <Box
+          minH="100vh"
+          bg="#f3f4f6"
+          px={{ base: 4, md: 8 }}
+          py={{ base: 6, md: 8 }}
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+        >
+          <Box w="full" maxW="640px">
+            <Stack spacing={6} align="center">
+              <Box
+                w="120px"
+                h="120px"
+                borderRadius="full"
+                bg="#0d1b2a"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                overflow="hidden"
+                boxShadow="0 8px 24px rgba(0,0,0,0.12)"
+                border="3px solid white"
+              >
+                <Image src={archeryImg} alt="Arqueros Andinos" w="full" h="full" objectFit="cover" />
+              </Box>
+              <Box
+                w="full"
+                maxW="460px"
+                bg="white"
+                borderRadius="14px"
+                border="1px solid"
+                borderColor="gray.200"
+                boxShadow="0 18px 35px rgba(0,0,0,0.10)"
+                overflow="hidden"
+              >
+                <Box px={{ base: 6, md: 7 }} py={{ base: 6, md: 7 }}>
+                  <Stack spacing={5}>
+                    <Heading size="md" color="#1f2937">
+                      Iniciar Sesión
+                    </Heading>
+                    <Stack
+                      as="form"
+                      spacing={4}
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!authLoading && username && password) {
+                          void handleLogin();
+                        }
+                      }}
+                    >
+                      <FormControl>
+                        <FormLabel color="gray.700" mb={1.5} fontSize="sm">
+                          Usuario
+                        </FormLabel>
+                        <Input
+                          value={username}
+                          onChange={(e) => setUsername(e.target.value)}
+                          bg="#f9fafb"
+                          borderColor="#d1d5db"
+                          borderRadius="8px"
+                          h="42px"
+                          _hover={{ borderColor: "gray.400" }}
+                          _focusVisible={{ borderColor: "#d97706", boxShadow: "0 0 0 1px #d97706" }}
+                        />
+                      </FormControl>
+                      <FormControl>
+                        <FormLabel color="gray.700" mb={1.5} fontSize="sm">
+                          Contraseña
+                        </FormLabel>
+                        <Input
+                          type="password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          bg="#f9fafb"
+                          borderColor="#d1d5db"
+                          borderRadius="8px"
+                          h="42px"
+                          _hover={{ borderColor: "gray.400" }}
+                          _focusVisible={{ borderColor: "#d97706", boxShadow: "0 0 0 1px #d97706" }}
+                        />
+                      </FormControl>
+
+                      <HStack justify="space-between" fontSize="sm" color="gray.600">
+                        <HStack spacing={2}>
+                          <Text>Recordarme</Text>
+                          <Checkbox isChecked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} colorScheme="orange" />
+                        </HStack>
+                        <Text color="#d97706" fontWeight="500">
+                          ¿Olvidaste tu contraseña?
+                        </Text>
+                      </HStack>
+
+                      {authError && (
+                        <Alert status="error" borderRadius="md">
+                          <AlertIcon />
+                          {authError}
+                        </Alert>
+                      )}
+
+                      <Button
+                        type="submit"
+                        bg="#d97706"
+                        color="white"
+                        _hover={{ bg: "#b45309" }}
+                        _active={{ bg: "#92400e" }}
+                        h="44px"
+                        borderRadius="8px"
+                        fontWeight="600"
+                        isLoading={authLoading}
+                        isDisabled={!username || !password}
+                      >
+                        Ingresar
+                      </Button>
+                    </Stack>
+                  </Stack>
+                </Box>
+                <Box h="4px" bg="linear-gradient(90deg, #f59e0b 0%, #ef4444 100%)" />
+              </Box>
+            </Stack>
+          </Box>
+        </Box>
       </>
     );
   }
@@ -1619,60 +1736,35 @@ function App() {
   if (view === "professor") {
     return (
       <>
-        <Grid templateColumns={{ base: "1fr", md: "154px 1fr", xl: "192px 1fr", "2xl": "230px 1fr" }} minH="100vh" bg="white">
+        <Grid templateColumns={{ base: "1fr", md: "250px 1fr" }} minH="100vh" bg="#f9fafb">
           <GridItem
             borderRight={{ base: "none", md: "1px solid" }}
-            borderColor="rgba(0,0,0,0.08)"
-            boxShadow={{ base: "none", md: "2px 0 8px rgba(0,0,0,0.06)" }}
-            p={{ base: 5, md: 6, xl: 8, "2xl": 10 }}
+            borderColor="gray.200"
+            bg="white"
+            p={{ base: 5, md: 4 }}
             position={{ base: "static", md: "sticky" }}
             top={{ base: "auto", md: 0 }}
             h={{ base: "auto", md: "100vh" }}
             alignSelf="start"
-            overflowY={{ base: "visible", md: "auto" }}
+            display="flex"
+            flexDirection="column"
           >
-            <Stack spacing={{ base: 4, xl: 5 }} h="full">
-              <Heading size="md" color="gray.900" fontSize={{ xl: "xl", "2xl": "2xl" }}>
-                Panel profesor
+            <Stack spacing={5} h="full">
+              <Heading size="lg" color="gray.900" lineHeight="1.1" px={2} pt={2}>
+                Panel
+                <br />
+                profesor
               </Heading>
-              <Text
-                color={profSection === "administrar_rutinas" ? "black" : "gray.700"}
-                fontWeight={profSection === "administrar_rutinas" ? "bold" : "normal"}
-                cursor="pointer"
-                onClick={() => setProfSection("administrar_rutinas")}
-              >
-                Administrar rutinas
-              </Text>
-              <Text color={profSection === "rutina" ? "black" : "gray.700"} fontWeight={profSection === "rutina" ? "bold" : "normal"} cursor="pointer" onClick={() => setProfSection("rutina")}>
-                Rutinas
-              </Text>
-              <Text color={profSection === "ejercicio" ? "black" : "gray.700"} fontWeight={profSection === "ejercicio" ? "bold" : "normal"} cursor="pointer" onClick={() => setProfSection("ejercicio")}>
-                Ejercicios
-              </Text>
-              <Text color={profSection === "alumno" ? "black" : "gray.700"} fontWeight={profSection === "alumno" ? "bold" : "normal"} cursor="pointer" onClick={() => setProfSection("alumno")}>
-                Alumnos
-              </Text>
-              <Stack spacing={3}>
-                {userRole === "admin" && (
-                  <Button variant="outline" onClick={() => setView("dashboard")}>
-                    Ver conexiones
-                  </Button>
-                )}
-              </Stack>
-              <Box flex="1" />
-              <HStack justify="space-between" align="center" w="full">
-                <Text color={profSection === "perfil" ? "black" : "gray.700"} fontWeight={profSection === "perfil" ? "bold" : "normal"} cursor="pointer" onClick={() => setProfSection("perfil")}>
-                  Perfil
-                </Text>
-                <Button
-                  variant="ghost"
-                  size={{ base: "sm", xl: "md", "2xl": "lg" }}
-                  minW="auto"
-                  p={1}
-                  color="gray.700"
-                  _hover={{ bg: "gray.100", color: "black" }}
-                  onClick={handleLogout}
-                  aria-label="Cerrar sesión"
+              <Stack spacing={1}>
+                <HStack
+                  px={3}
+                  py={3}
+                  borderRadius="md"
+                  bg={profSection === "administrar_rutinas" ? "orange.50" : "transparent"}
+                  color={profSection === "administrar_rutinas" ? "orange.600" : "gray.700"}
+                  fontWeight={profSection === "administrar_rutinas" ? "600" : "500"}
+                  cursor="pointer"
+                  onClick={() => setProfSection("administrar_rutinas")}
                 >
                   <Box
                     as="svg"
@@ -1685,458 +1777,586 @@ function App() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   >
-                    <path d="m16 17 5-5-5-5" />
-                    <path d="M21 12H9" />
-                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <rect width="7" height="18" x="3" y="3" rx="1" />
+                    <rect width="7" height="7" x="14" y="3" rx="1" />
+                    <rect width="7" height="7" x="14" y="14" rx="1" />
                   </Box>
-                </Button>
-              </HStack>
+                  <Text fontSize="17px">Administrar rutinas</Text>
+                </HStack>
+                <HStack
+                  px={3}
+                  py={3}
+                  borderRadius="md"
+                  color={profSection === "rutina" ? "gray.900" : "gray.700"}
+                  fontWeight={profSection === "rutina" ? "600" : "500"}
+                  cursor="pointer"
+                  _hover={{ bg: "gray.50" }}
+                  onClick={() => setProfSection("rutina")}
+                >
+                  <Box
+                    as="svg"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    boxSize="18px"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M8 2v4" />
+                    <path d="M12 2v4" />
+                    <path d="M16 2v4" />
+                    <rect width="16" height="18" x="4" y="4" rx="2" />
+                    <path d="M8 10h6" />
+                    <path d="M8 14h8" />
+                    <path d="M8 18h5" />
+                  </Box>
+                  <Text fontSize="17px">Rutinas</Text>
+                </HStack>
+                <HStack
+                  px={3}
+                  py={3}
+                  borderRadius="md"
+                  color={profSection === "ejercicio" ? "gray.900" : "gray.700"}
+                  fontWeight={profSection === "ejercicio" ? "600" : "500"}
+                  cursor="pointer"
+                  _hover={{ bg: "gray.50" }}
+                  onClick={() => setProfSection("ejercicio")}
+                >
+                  <Box
+                    as="svg"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    boxSize="18px"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <circle cx="12" cy="12" r="6" />
+                    <circle cx="12" cy="12" r="2" />
+                  </Box>
+                  <Text fontSize="17px">Ejercicios</Text>
+                </HStack>
+                <HStack
+                  px={3}
+                  py={3}
+                  borderRadius="md"
+                  color={profSection === "alumno" ? "gray.900" : "gray.700"}
+                  fontWeight={profSection === "alumno" ? "600" : "500"}
+                  cursor="pointer"
+                  _hover={{ bg: "gray.50" }}
+                  onClick={() => setProfSection("alumno")}
+                >
+                  <Box
+                    as="svg"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    boxSize="18px"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <path d="M16 3.128a4 4 0 0 1 0 7.744" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                    <circle cx="9" cy="7" r="4" />
+                  </Box>
+                  <Text fontSize="17px">Alumnos</Text>
+                </HStack>
+              </Stack>
+              <Stack spacing={3}>
+                {userRole === "admin" && (
+                  <Button size="sm" variant="outline" onClick={() => setView("dashboard")}>
+                    Ver conexiones
+                  </Button>
+                )}
+              </Stack>
+              <Box flex="1" />
+              <Box borderTop="1px solid" borderColor="gray.200" pt={3}>
+                <HStack px={2} py={2.5} borderRadius="md" cursor="pointer" _hover={{ bg: "gray.50" }} onClick={() => setProfSection("perfil")}>
+                  <Text fontSize="17px">◉</Text>
+                  <Text fontSize="17px" color="gray.700" fontWeight={profSection === "perfil" ? "600" : "500"}>
+                    Perfil
+                  </Text>
+                </HStack>
+                <HStack px={2} py={2.5} borderRadius="md" cursor="pointer" _hover={{ bg: "gray.50" }} onClick={handleLogout}>
+                  <Text fontSize="17px">↪</Text>
+                  <Text fontSize="17px" color="gray.700" fontWeight="500">
+                    Cerrar sesión
+                  </Text>
+                </HStack>
+              </Box>
             </Stack>
           </GridItem>
-          <GridItem pl={{ base: 6, md: 10, xl: 14, "2xl": 18 }} pr={{ base: 0, md: 0, xl: 4, "2xl": 8 }} py={{ base: 6, md: 10, xl: 12, "2xl": 14 }} display="flex" alignItems="flex-start" justifyContent="flex-start" w="full" fontSize={{ base: "sm", xl: "md", "2xl": "lg" }}>
+          <GridItem pl={{ base: 6, md: 8 }} pr={{ base: 6, md: 8 }} py={{ base: 6, md: 7 }} display="flex" alignItems="flex-start" justifyContent="flex-start" w="full" fontSize={{ base: "sm", xl: "md", "2xl": "lg" }}>
             <Stack spacing={{ base: 4, xl: 6 }} w="full">
               {profSection === "administrar_rutinas" && (
-                <Stack spacing={6}>
-                  <Heading size="lg" ml={{ base: 0, md: "10%" }}>
-                    Rutinas activas
-                  </Heading>
-                  <HStack align="flex-start" spacing={8} justify="space-between" w="full">
-                    <Stack spacing={3} flex="1">
-                    {activeAssignments.map((assignment) => (
-                      <Box
-                        key={assignment.id}
-                        p={{ base: 4, xl: 5 }}
-                        w={{ base: "100%", md: "75%" }}
-                        ml={{ base: 0, md: "10%" }}
-                        borderWidth="1px"
-                        borderRadius="lg"
-                        bg="white"
-                        shadow="sm"
-                        _hover={{ borderColor: "gray.400", cursor: "pointer" }}
-                        onClick={() => setExpandedActiveAssignment((prev) => (prev === assignment.id ? null : assignment.id))}
-                      >
-                        {(() => {
-                          const routine = routines.find((r) => r.id === assignment.routine_id);
-                          const orderedDays = routine ? [...routine.days].sort((a, b) => a.day_number - b.day_number) : [];
-                          return (
-                            <Stack spacing={2}>
-                              <HStack justify="space-between" align="start">
-                                <Stack spacing={0.5}>
-                                  <Heading size="md" color="gray.900" fontSize={{ base: "lg", xl: "xl", "2xl": "2xl" }}>
-                                    {studentNameById.get(assignment.student_id) || `Alumno #${assignment.student_id}`}
-                                  </Heading>
-                                  <Text color="gray.600" fontSize="sm">
-                                    {routineNameById.get(assignment.routine_id) || `Rutina #${assignment.routine_id}`}
-                                  </Text>
-                                  <Text color="gray.500" fontSize="xs">
-                                    Semana: {formatDateEs(assignment.start_date)} a {formatDateEs(assignment.end_date)}
-                                  </Text>
-                                </Stack>
-                                <Badge colorScheme="green">Activa</Badge>
-                              </HStack>
-                              <Collapse in={expandedActiveAssignment === assignment.id} animateOpacity>
-                                <Stack spacing={3} pt={2}>
-                                  {orderedDays.map((day) => (
-                                    <Box key={day.id}>
-                                      <Text color="gray.700" fontWeight="medium">
-                                        {day.name || formatDay(day)}
-                                      </Text>
-                                      <Stack as="ul" spacing={0.5} mt={1} pl={5}>
-                                        {day.exercises.map((dayExercise) => (
-                                          <Text as="li" key={dayExercise.id} fontSize="sm" color="gray.500">
-                                            {exerciseNameById.get(dayExercise.exercise_id) || `Ejercicio #${dayExercise.exercise_id}`}
-                                          </Text>
-                                        ))}
-                                        {!day.exercises.length && (
-                                          <Text as="li" fontSize="sm" color="gray.500">
-                                            Sin ejercicios
-                                          </Text>
-                                        )}
-                                      </Stack>
-                                    </Box>
-                                  ))}
-                                  {!routine && <Text color="gray.500">No se encontró la rutina asociada.</Text>}
-                                  <HStack justify="flex-end" pt={2}>
-                                    <Button
-                                      size={actionIconButtonSize}
-                                      variant="outline"
-                                      borderRadius="xl"
-                                      borderColor="gray.300"
-                                      color="black"
-                                      _hover={{ bg: "red.700", borderColor: "red.800", color: "white" }}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setDeleteAssignedRoutineError(null);
-                                        setDeleteAssignedRoutineTarget(assignment);
-                                        setDeleteAssignedRoutineModalOpen(true);
-                                      }}
-                                    >
-                                      <Box
-                                        as="svg"
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        viewBox="0 0 24 24"
-                                        boxSize="16px"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      >
-                                        <path d="M10 11v6" />
-                                        <path d="M14 11v6" />
-                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                                        <path d="M3 6h18" />
-                                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                      </Box>
-                                    </Button>
-                                  </HStack>
-                                </Stack>
-                              </Collapse>
-                            </Stack>
-                          );
-                        })()}
-                      </Box>
-                    ))}
-                      {!activeAssignments.length && (
-                        <Text color="gray.600" ml={{ base: 0, md: "10%" }}>
-                          No hay rutinas activas asignadas.
-                        </Text>
-                      )}
+                <Stack spacing={6} maxW="980px">
+                  <HStack justify="space-between" align="flex-start">
+                    <Stack spacing={1}>
+                      <Heading size="lg">Rutinas activas</Heading>
+                      <Text color="gray.500" fontSize="sm">
+                        Gestiona y supervisa el progreso de tus arqueros.
+                      </Text>
                     </Stack>
-                    <Stack flex={{ base: "0 0 160px", xl: "0 0 220px", "2xl": "0 0 260px" }} pt={2} ml="auto" mr={{ base: "50px", xl: "70px", "2xl": "90px" }} spacing={3}>
-                      <Button
-                        variant="outline"
-                        borderColor="gray.300"
-                        borderRadius="lg"
-                        color="gray.800"
-                        _hover={{ borderColor: "gray.500" }}
-                        onClick={openAdminAssignModal}
-                        w="full"
-                      >
-                        <HStack justify="center" spacing={2}>
-                          <Box
-                            as="svg"
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            boxSize="18px"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
-                            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-                            <path d="M9 14h6" />
-                            <path d="M12 17v-6" />
-                          </Box>
-                          <Text>Asignar rutina</Text>
-                        </HStack>
-                      </Button>
-                    </Stack>
+                    <Button bg="#d97706" color="white" borderRadius="md" px={5} _hover={{ bg: "#b45309" }} _active={{ bg: "#92400e" }} onClick={openAdminAssignModal}>
+                      <HStack spacing={2}>
+                        <Box
+                          as="svg"
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          boxSize="16px"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+                          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                          <path d="M9 14h6" />
+                          <path d="M12 17v-6" />
+                        </Box>
+                        <Text>Asignar rutina</Text>
+                      </HStack>
+                    </Button>
                   </HStack>
+                  <Stack spacing={4}>
+                    {activeAssignments.map((assignment) => {
+                      const routine = routines.find((r) => r.id === assignment.routine_id);
+                      const orderedDays = routine ? [...routine.days].sort((a, b) => a.day_number - b.day_number) : [];
+                      return (
+                        <Box key={assignment.id} borderWidth="1px" borderColor="gray.200" borderRadius="xl" bg="white" overflow="hidden">
+                          <Box p={6}>
+                            <HStack justify="space-between" align="start" mb={4}>
+                              <Stack spacing={1}>
+                                <Heading size="md" color="gray.900">
+                                  {studentNameById.get(assignment.student_id) || `Alumno #${assignment.student_id}`}
+                                </Heading>
+                                <Text color="gray.600" fontSize="sm" fontWeight="medium">
+                                  {routineNameById.get(assignment.routine_id) || `Rutina #${assignment.routine_id}`}
+                                </Text>
+                                <Text color="gray.400" fontSize="xs">
+                                  Semana: {formatDateEs(assignment.start_date)} a {formatDateEs(assignment.end_date)}
+                                </Text>
+                              </Stack>
+                              <Badge bg="green.100" color="green.800" borderRadius="full" px={3} py={1} fontSize="10px" fontWeight="700">
+                                ACTIVA
+                              </Badge>
+                            </HStack>
+                            <Stack spacing={5}>
+                              {orderedDays.map((day) => (
+                                <Box key={day.id} pl={3} borderLeft="2px solid" borderColor="gray.200">
+                                  <HStack justify="space-between" align="start" mb={1}>
+                                    <Text color="gray.800" fontWeight="semibold">
+                                      {day.name || formatDay(day)}
+                                    </Text>
+                                    <Text color="gray.400" fontSize="xs">
+                                      Flechas totales: {getRoutineDayArrows(day)}
+                                    </Text>
+                                  </HStack>
+                                  <Stack as="ul" spacing={1}>
+                                    {day.exercises.map((dayExercise) => (
+                                      <HStack as="li" key={dayExercise.id} align="flex-start" spacing={2}>
+                                        <Box w="5px" h="5px" mt="7px" borderRadius="full" bg="orange.400" flexShrink={0} />
+                                        <Text fontSize="sm" color="gray.600">
+                                          {exerciseNameById.get(dayExercise.exercise_id) || `Ejercicio #${dayExercise.exercise_id}`}
+                                        </Text>
+                                      </HStack>
+                                    ))}
+                                  </Stack>
+                                </Box>
+                              ))}
+                              {!routine && <Text color="gray.500">No se encontró la rutina asociada.</Text>}
+                            </Stack>
+                          </Box>
+                          <HStack justify="flex-end" spacing={2} px={6} py={3} bg="gray.50" borderTopWidth="1px" borderColor="gray.200">
+                            <Button
+                              size={actionIconButtonSize}
+                              variant="ghost"
+                              color="gray.400"
+                              _hover={{ bg: "gray.100", color: "gray.700" }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                              }}
+                              aria-label="Exportar rutina"
+                            >
+                              <Box
+                                as="svg"
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                boxSize="16px"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
+                                <path d="M14 2v5a1 1 0 0 0 1 1h5" />
+                                <path d="M10 9H8" />
+                                <path d="M16 13H8" />
+                                <path d="M16 17H8" />
+                              </Box>
+                            </Button>
+                            <Button
+                              size={actionIconButtonSize}
+                              variant="ghost"
+                              color="gray.400"
+                              _hover={{ bg: "gray.100", color: "red.600" }}
+                              onClick={() => {
+                                setDeleteAssignedRoutineError(null);
+                                setDeleteAssignedRoutineTarget(assignment);
+                                setDeleteAssignedRoutineModalOpen(true);
+                              }}
+                              aria-label="Eliminar rutina activa"
+                            >
+                              <Box
+                                as="svg"
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                boxSize="16px"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M10 11v6" />
+                                <path d="M14 11v6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                                <path d="M3 6h18" />
+                                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </Box>
+                            </Button>
+                          </HStack>
+                        </Box>
+                      );
+                    })}
+                    {!activeAssignments.length && <Text color="gray.600">No hay rutinas activas asignadas.</Text>}
+                  </Stack>
                 </Stack>
               )}
               {profSection === "rutina" && (
                 <Stack spacing={6}>
-                  <HStack align="flex-start" spacing={8} justify="space-between" w="full">
-                    <Stack spacing={6} flex="1">
-                      {sortedRoutines.map((routine) => {
-                        const orderedDays = [...routine.days].sort((a, b) => a.day_number - b.day_number);
-                        const daysPreview = `${orderedDays.length} Días`;
-                        const weekArrowsTotal = getRoutineWeekArrows(routine);
-                        return (
-                          <Box
-                            key={routine.id}
-                            p={{ base: 4, xl: 5 }}
-                            w={{ base: "100%", md: "75%" }}
-                            ml={{ base: 0, md: "10%" }}
-                            borderWidth="1px"
-                            borderRadius="lg"
-                            borderColor="gray.200"
-                            bg="white"
-                            shadow="sm"
-                            _hover={{ borderColor: "gray.400", cursor: "pointer" }}
-                            onClick={() => setExpandedRoutine((prev) => (prev === routine.id ? null : routine.id))}
-                          >
-                            <HStack align="flex-start" spacing={4}>
-                              <Stack spacing={1.5} flex="1 1 70%">
-                                <HStack justify="space-between" align="flex-start" w="full" spacing={4}>
-                                  <Heading size="md" color="gray.900" fontSize={{ base: "lg", xl: "xl", "2xl": "2xl" }}>
-                                    {routine.name}
-                                  </Heading>
-                                  <Text color="gray.500" fontSize="sm" whiteSpace="nowrap">
-                                    Flechas totales: {weekArrowsTotal}
-                                  </Text>
-                                </HStack>
-                                <Text color="gray.500">{daysPreview}</Text>
-                                <Collapse in={expandedRoutine === routine.id} animateOpacity>
-                                  <Stack spacing={3} pt={2}>
-                                    {orderedDays.map((day) => (
-                                      <Box key={day.id}>
-                                        <HStack spacing={2} align="baseline" w="full">
-                                          <Text color="gray.700" fontWeight="medium">
-                                            {day.name || formatDay(day)}
-                                          </Text>
-                                          <Text color="gray.400" fontSize="sm">
-                                            •
-                                          </Text>
-                                          <Text color="gray.500" fontSize="sm">
-                                            Flechas totales: {getRoutineDayArrows(day)}
-                                          </Text>
-                                        </HStack>
-                                        <Stack as="ul" spacing={0.5} mt={1} pl={5}>
-                                          {day.exercises.map((dayExercise) => (
-                                            <Text as="li" key={dayExercise.id} fontSize="sm" color="gray.500">
+                  <HStack justify="space-between" align="center" spacing={4} w="full" maxW="980px">
+                    <Stack spacing={1}>
+                      <Heading size="lg">Rutinas</Heading>
+                      <Text color="gray.500" fontSize="sm">
+                        Gestiona tus rutinas predefinidas.
+                      </Text>
+                    </Stack>
+                    <Button
+                      bg="#f97316"
+                      color="white"
+                      borderRadius="10px"
+                      _hover={{ bg: "#ea580c" }}
+                      _active={{ bg: "#c2410c" }}
+                      onClick={openCreateRoutineModal}
+                    >
+                      <HStack justify="center" spacing={2}>
+                        <Image src={notebookTabsIconUrl} alt="Agregar rutina" boxSize="16px" filter="brightness(0) invert(1)" />
+                        <Text>Agregar rutina</Text>
+                      </HStack>
+                    </Button>
+                  </HStack>
+                  <Stack spacing={4} w="full" maxW="980px">
+                    {sortedRoutines.map((routine) => {
+                      const orderedDays = [...routine.days].sort((a, b) => a.day_number - b.day_number);
+                      const daysPreview = `${orderedDays.length} Días`;
+                      const weekArrowsTotal = getRoutineWeekArrows(routine);
+                      const isExpanded = expandedRoutine === routine.id;
+                      return (
+                        <Box
+                          key={routine.id}
+                          borderWidth="1px"
+                          borderRadius="12px"
+                          borderColor="gray.200"
+                          bg="white"
+                          overflow="hidden"
+                          _hover={{ borderColor: "gray.300", cursor: "pointer" }}
+                          onClick={() => setExpandedRoutine((prev) => (prev === routine.id ? null : routine.id))}
+                        >
+                          <Box p={{ base: 4, xl: 5 }}>
+                            <Stack spacing={1.5}>
+                              <HStack justify="space-between" align="flex-start" w="full" spacing={4}>
+                                <Heading size="md" color="gray.900">
+                                  {routine.name}
+                                </Heading>
+                                <Text color="gray.500" fontSize="sm" whiteSpace="nowrap">
+                                  Flechas totales: {weekArrowsTotal}
+                                </Text>
+                              </HStack>
+                              <Text color="gray.500">{daysPreview}</Text>
+                              <Collapse in={isExpanded} animateOpacity>
+                                <Stack spacing={4} pt={2}>
+                                  {orderedDays.map((day) => (
+                                    <Box key={day.id} pl={3} borderLeft="2px solid" borderColor="gray.200">
+                                      <HStack spacing={2} align="baseline" w="full">
+                                        <Text color="gray.700" fontWeight="medium">
+                                          {day.name || formatDay(day)}
+                                        </Text>
+                                        <Text color="gray.400" fontSize="sm">
+                                          •
+                                        </Text>
+                                        <Text color="gray.500" fontSize="sm">
+                                          Flechas totales: {getRoutineDayArrows(day)}
+                                        </Text>
+                                      </HStack>
+                                      <Stack as="ul" spacing={0.75} mt={1}>
+                                        {day.exercises.map((dayExercise) => (
+                                          <HStack as="li" key={dayExercise.id} align="flex-start" spacing={2}>
+                                            <Box w="5px" h="5px" mt="7px" borderRadius="full" bg="orange.400" flexShrink={0} />
+                                            <Text fontSize="sm" color="gray.500">
                                               {exerciseNameById.get(dayExercise.exercise_id) || `Ejercicio #${dayExercise.exercise_id}`}
                                             </Text>
-                                          ))}
-                                          {!day.exercises.length && (
-                                            <Text as="li" fontSize="sm" color="gray.500">
+                                          </HStack>
+                                        ))}
+                                        {!day.exercises.length && (
+                                          <HStack as="li" align="flex-start" spacing={2}>
+                                            <Box w="5px" h="5px" mt="7px" borderRadius="full" bg="gray.300" flexShrink={0} />
+                                            <Text fontSize="sm" color="gray.500">
                                               Sin ejercicios
                                             </Text>
-                                          )}
-                                        </Stack>
-                                      </Box>
-                                    ))}
-                                    <HStack spacing={2} pt={2}>
-                                    <Button
-                                      size={actionIconButtonSize}
-                                      variant="outline"
-                                      borderRadius="xl"
-                                      borderColor="gray.300"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          openEditRoutineModal(routine);
-                                        }}
-                                      >
-                                        <Image src={editIconUrl} alt="Editar" boxSize={actionIconSize} />
-                                      </Button>
-                                      <Button
-                                        size={actionIconButtonSize}
-                                        variant="outline"
-                                        borderRadius="xl"
-                                        borderColor="gray.300"
-                                        color="black"
-                                        _hover={{ bg: "red.700", borderColor: "red.800", color: "white" }}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setDeleteRoutineError(null);
-                                          setDeleteRoutineTarget(routine);
-                                          setDeleteRoutineModalOpen(true);
-                                        }}
-                                      >
-                                        <Box
-                                          as="svg"
-                                          xmlns="http://www.w3.org/2000/svg"
-                                          viewBox="0 0 24 24"
-                                          boxSize={actionIconSize}
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="2"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        >
-                                          <path d="M10 11v6" />
-                                          <path d="M14 11v6" />
-                                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                                          <path d="M3 6h18" />
-                                          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                        </Box>
-                                      </Button>
-                                    </HStack>
-                                  </Stack>
-                                </Collapse>
-                              </Stack>
-                            </HStack>
+                                          </HStack>
+                                        )}
+                                      </Stack>
+                                    </Box>
+                                  ))}
+                                </Stack>
+                              </Collapse>
+                            </Stack>
                           </Box>
-                        );
-                      })}
-                      {!sortedRoutines.length && <Text color="gray.600">No hay rutinas para mostrar.</Text>}
-                    </Stack>
-                    <Stack flex={{ base: "0 0 160px", xl: "0 0 220px", "2xl": "0 0 260px" }} pt={2} ml="auto" mr={{ base: "50px", xl: "70px", "2xl": "90px" }} spacing={3}>
-                      <Button
-                        variant="outline"
-                        borderColor="gray.300"
-                        borderRadius="lg"
-                        color="gray.800"
-                        _hover={{ borderColor: "gray.500" }}
-                        onClick={openCreateRoutineModal}
-                        w="full"
-                      >
-                        <HStack justify="center" spacing={2}>
-                          <Image src={notebookTabsIconUrl} alt="Agregar rutina" boxSize="18px" />
-                          <Text>Agregar rutina</Text>
-                        </HStack>
-                      </Button>
-                    </Stack>
-                  </HStack>
+                          <Collapse in={isExpanded} animateOpacity>
+                            <HStack justify="flex-start" spacing={2} px={5} py={3} bg="gray.50" borderTopWidth="1px" borderColor="gray.200">
+                              <Button
+                                size={actionIconButtonSize}
+                                variant="ghost"
+                                color="gray.400"
+                                _hover={{ bg: "gray.100", color: "blue.600" }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openEditRoutineModal(routine);
+                                }}
+                              >
+                                <Image src={editIconUrl} alt="Editar" boxSize={actionIconSize} />
+                              </Button>
+                              <Button
+                                size={actionIconButtonSize}
+                                variant="ghost"
+                                color="gray.400"
+                                _hover={{ bg: "red.50", color: "red.600" }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteRoutineError(null);
+                                  setDeleteRoutineTarget(routine);
+                                  setDeleteRoutineModalOpen(true);
+                                }}
+                              >
+                                <Box
+                                  as="svg"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  viewBox="0 0 24 24"
+                                  boxSize={actionIconSize}
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M10 11v6" />
+                                  <path d="M14 11v6" />
+                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                                  <path d="M3 6h18" />
+                                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                </Box>
+                              </Button>
+                            </HStack>
+                          </Collapse>
+                        </Box>
+                      );
+                    })}
+                    {!sortedRoutines.length && <Text color="gray.600">No hay rutinas para mostrar.</Text>}
+                  </Stack>
                 </Stack>
               )}
               {profSection === "ejercicio" && (
                 <Stack spacing={6}>
-                  <InputGroup maxW={{ base: "360px", xl: "480px", "2xl": "560px" }} ml={{ base: 0, md: "10%" }}>
-                    <InputLeftElement pointerEvents="none" color="gray.500">
-                      <SearchIcon boxSize={3.5} />
-                    </InputLeftElement>
-                    <Input
-                      value={exerciseSearch}
-                      onChange={(e) => setExerciseSearch(e.target.value)}
-                      placeholder="Buscar ejercicios"
-                      bg="gray.100"
-                      borderColor="gray.100"
-                      borderRadius="lg"
-                      _hover={{ borderColor: "gray.300" }}
-                      _focus={{ borderColor: "gray.400", bg: "white" }}
-                    />
-                  </InputGroup>
+                  <HStack justify="space-between" align="center" spacing={4} w="full" maxW="980px">
+                    <InputGroup maxW="420px">
+                      <InputLeftElement pointerEvents="none" color="gray.500">
+                        <SearchIcon boxSize={3.5} />
+                      </InputLeftElement>
+                      <Input
+                        value={exerciseSearch}
+                        onChange={(e) => setExerciseSearch(e.target.value)}
+                        placeholder="Buscar ejercicios"
+                        bg="white"
+                        borderColor="gray.300"
+                        borderRadius="10px"
+                        _hover={{ borderColor: "gray.400" }}
+                        _focus={{ borderColor: "gray.500", bg: "white" }}
+                      />
+                    </InputGroup>
+                    <Button
+                      bg="#f97316"
+                      color="white"
+                      borderRadius="10px"
+                      _hover={{ bg: "#ea580c" }}
+                      _active={{ bg: "#c2410c" }}
+                      onClick={() => setCreateModalOpen(true)}
+                    >
+                      <HStack justify="center" spacing={2}>
+                        <Image src={bowIconUrl} alt="Bow icon" boxSize="16px" filter="brightness(0) invert(1)" />
+                        <Text>Crear ejercicio</Text>
+                      </HStack>
+                    </Button>
+                  </HStack>
                   <HStack align="flex-start" spacing={8} justify="space-between" w="full">
-                    <Stack spacing={6} flex="1">
+                    <Stack spacing={4} flex="1" maxW="980px">
                       {filteredExercises.map((ex) => (
                         <Box
                           key={ex.id}
-                          p={{ base: 4, xl: 5 }}
-                          w={{ base: "100%", md: "75%" }}
-                          ml={{ base: 0, md: "10%" }}
+                          w="full"
                           borderWidth="1px"
-                          borderRadius="lg"
+                          borderRadius="12px"
                           borderColor="gray.200"
                           bg="white"
-                          shadow="sm"
-                          _hover={{ borderColor: "gray.400", cursor: "pointer" }}
+                          overflow="hidden"
+                          _hover={{ borderColor: "gray.300", cursor: "pointer" }}
                           onClick={() => setExpandedExercise((prev) => (prev === ex.id ? null : ex.id))}
                         >
-                          <HStack align="flex-start" spacing={4}>
-                            <Stack spacing={2} flex="1 1 70%">
-                              <Heading size="md" color="gray.900" fontSize={{ base: "lg", xl: "xl", "2xl": "2xl" }}>
+                          <Box p={{ base: 4, xl: 5 }}>
+                            <Stack spacing={2}>
+                              <Heading size="md" color="gray.900">
                                 {ex.name}
                               </Heading>
-                              <Stack spacing={1.5} pt={1}>
-                                <Text color="gray.500">{ex.arrows_count} flechas</Text>
-                                <Collapse in={expandedExercise === ex.id} animateOpacity>
-                                  <Stack spacing={1.5} color="gray.700">
-                                    <Text color="gray.500">Distancia: {ex.distance_m} m</Text>
-                                    <Text color="gray.500" fontSize="95%">
-                                      Descripción: {ex.description || "Sin descripción"}
-                                    </Text>
-                                    <HStack spacing={2} pt={2}>
-                                      <Button
-                                        size={actionIconButtonSize}
-                                        variant="outline"
-                                        borderRadius="xl"
-                                        borderColor="gray.300"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setEditExercise(ex);
-                                          setEditName(ex.name);
-                                          setEditArrows(ex.arrows_count);
-                                          setEditDistance(ex.distance_m);
-                                          setEditDescription(ex.description || "");
-                                          setEditError(null);
-                                          setEditModalOpen(true);
-                                        }}
-                                      >
-                                        <Image src={editIconUrl} alt="Editar" boxSize={actionIconSize} />
-                                      </Button>
-                                      <Button
-                                        size={actionIconButtonSize}
-                                        variant="outline"
-                                        borderRadius="xl"
-                                        borderColor="gray.300"
-                                        color="black"
-                                        _hover={{ bg: "red.600", borderColor: "red.700", color: "white" }}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setDeleteExercise(ex);
-                                          setDeleteModalOpen(true);
-                                        }}
-                                      >
-                                        <Box
-                                          as="svg"
-                                          xmlns="http://www.w3.org/2000/svg"
-                                          viewBox="0 0 24 24"
-                                          boxSize={actionIconSize}
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="2"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        >
-                                          <path d="M10 11v6" />
-                                          <path d="M14 11v6" />
-                                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                                          <path d="M3 6h18" />
-                                          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                        </Box>
-                                      </Button>
-                                    </HStack>
-                                  </Stack>
-                                </Collapse>
-                              </Stack>
+                              <Text color="gray.500">{ex.arrows_count} flechas</Text>
+                              <Collapse in={expandedExercise === ex.id} animateOpacity>
+                                <Stack spacing={1.5} color="gray.700" pt={1}>
+                                  <Text color="gray.500">Distancia: {ex.distance_m} m</Text>
+                                  <Text color="gray.500" fontSize="95%">
+                                    Descripción: {ex.description || "Sin descripción"}
+                                  </Text>
+                                </Stack>
+                              </Collapse>
                             </Stack>
-                          </HStack>
+                          </Box>
+                          <Collapse in={expandedExercise === ex.id} animateOpacity>
+                            <HStack justify="flex-start" spacing={2} px={5} py={3} bg="gray.50" borderTopWidth="1px" borderColor="gray.200">
+                              <Button
+                                size={actionIconButtonSize}
+                                variant="ghost"
+                                color="gray.400"
+                                _hover={{ bg: "gray.100", color: "blue.600" }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditExercise(ex);
+                                  setEditName(ex.name);
+                                  setEditArrows(ex.arrows_count);
+                                  setEditDistance(ex.distance_m);
+                                  setEditDescription(ex.description || "");
+                                  setEditError(null);
+                                  setEditModalOpen(true);
+                                }}
+                              >
+                                <Image src={editIconUrl} alt="Editar" boxSize={actionIconSize} />
+                              </Button>
+                              <Button
+                                size={actionIconButtonSize}
+                                variant="ghost"
+                                color="gray.400"
+                                _hover={{ bg: "red.50", color: "red.600" }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteExercise(ex);
+                                  setDeleteModalOpen(true);
+                                }}
+                              >
+                                <Box
+                                  as="svg"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  viewBox="0 0 24 24"
+                                  boxSize={actionIconSize}
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M10 11v6" />
+                                  <path d="M14 11v6" />
+                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                                  <path d="M3 6h18" />
+                                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                </Box>
+                              </Button>
+                            </HStack>
+                          </Collapse>
                         </Box>
                       ))}
                       {!filteredExercises.length && <Text color="gray.600">No hay ejercicios para mostrar.</Text>}
-                    </Stack>
-                    <Stack flex={{ base: "0 0 160px", xl: "0 0 220px", "2xl": "0 0 260px" }} pt={2} ml="auto" mr={{ base: "50px", xl: "70px", "2xl": "90px" }} spacing={3}>
-                      <Button
-                        variant="outline"
-                        borderColor="gray.300"
-                        borderRadius="lg"
-                        color="gray.800"
-                        _hover={{ borderColor: "gray.500" }}
-                        onClick={() => setCreateModalOpen(true)}
-                        w="full"
-                      >
-                        <HStack justify="center" spacing={2}>
-                          <Image src={bowIconUrl} alt="Bow icon" boxSize="18px" />
-                          <Text>Crear ejercicio</Text>
-                        </HStack>
-                      </Button>
                     </Stack>
                   </HStack>
                 </Stack>
               )}
               {profSection === "alumno" && (
                 <Stack spacing={6}>
-                  <InputGroup maxW={{ base: "360px", xl: "480px", "2xl": "560px" }} ml={{ base: 0, md: "10%" }}>
-                    <InputLeftElement pointerEvents="none" color="gray.500">
-                      <SearchIcon boxSize={3.5} />
-                    </InputLeftElement>
-                    <Input
-                      value={studentSearch}
-                      onChange={(e) => setStudentSearch(e.target.value)}
-                      placeholder="Buscar alumnos"
-                      bg="gray.100"
-                      borderColor="gray.100"
-                      borderRadius="lg"
-                      _hover={{ borderColor: "gray.300" }}
-                      _focus={{ borderColor: "gray.400", bg: "white" }}
-                    />
-                  </InputGroup>
-                  <HStack align="flex-start" spacing={8} justify="space-between" w="full">
-                    <Stack spacing={6} flex="1">
-                      <Stack spacing={3}>
-                        <Heading size="md" color="black" ml={{ base: 0, md: "10%" }}>
-                          Alumnos activos
-                        </Heading>
-                        {activeStudents.map((st) => (
-                          <Box
-                            key={st.id}
-                            p={{ base: 4, xl: 5 }}
-                            w={{ base: "100%", md: "75%" }}
-                            ml={{ base: 0, md: "10%" }}
-                            borderWidth="1px"
-                            borderRadius="lg"
-                            borderColor="gray.200"
-                            bg="white"
-                            shadow="sm"
-                            _hover={{ borderColor: "gray.400", cursor: "pointer" }}
-                            onClick={() => setExpandedStudent((prev) => (prev === st.id ? null : st.id))}
-                          >
+                  <HStack justify="space-between" align="center" spacing={4} w="full" maxW="980px">
+                    <InputGroup maxW="420px">
+                      <InputLeftElement pointerEvents="none" color="gray.500">
+                        <SearchIcon boxSize={3.5} />
+                      </InputLeftElement>
+                      <Input
+                        value={studentSearch}
+                        onChange={(e) => setStudentSearch(e.target.value)}
+                        placeholder="Buscar alumnos"
+                        bg="white"
+                        borderColor="gray.300"
+                        borderRadius="10px"
+                        _hover={{ borderColor: "gray.400" }}
+                        _focus={{ borderColor: "gray.500", bg: "white" }}
+                      />
+                    </InputGroup>
+                    <Button
+                      bg="#f97316"
+                      color="white"
+                      borderRadius="10px"
+                      _hover={{ bg: "#ea580c" }}
+                      _active={{ bg: "#c2410c" }}
+                      onClick={() => setCreateStudentModalOpen(true)}
+                    >
+                      <HStack justify="center" spacing={2}>
+                        <Image src={userPlusIconUrl} alt="Agregar alumno" boxSize="16px" filter="brightness(0) invert(1)" />
+                        <Text>Agregar alumno</Text>
+                      </HStack>
+                    </Button>
+                  </HStack>
+                  <Stack spacing={6} w="full" maxW="980px">
+                    <Stack spacing={3}>
+                      <Heading size="md" color="black">
+                        Alumnos activos
+                      </Heading>
+                      {activeStudents.map((st) => (
+                        <Box
+                          key={st.id}
+                          borderWidth="1px"
+                          borderRadius="12px"
+                          borderColor="gray.200"
+                          bg="white"
+                          overflow="hidden"
+                          _hover={{ borderColor: "gray.300", cursor: "pointer" }}
+                          onClick={() => setExpandedStudent((prev) => (prev === st.id ? null : st.id))}
+                        >
+                          <Box p={{ base: 4, xl: 5 }}>
                             <HStack justify="space-between" align="start">
-                              <Heading size="md" color="gray.900" fontWeight="normal" fontSize={{ base: "lg", xl: "xl", "2xl": "2xl" }}>
+                              <Heading size="md" color="gray.900" fontWeight="normal">
                                 {st.full_name}
                               </Heading>
                               <Badge colorScheme="green">Activo</Badge>
@@ -2147,114 +2367,113 @@ function App() {
                                 {st.contact && <Text>Contacto: {st.contact}</Text>}
                                 {typeof st.bow_pounds === "number" && <Text>Arco: {st.bow_pounds} lb</Text>}
                                 {typeof st.arrows_available === "number" && <Text>Flechas: {st.arrows_available}</Text>}
-                                <HStack justify="space-between" align="center" pt={2}>
-                                  <HStack spacing={2}>
-                                    <Button
-                                      size={actionIconButtonSize}
-                                      variant="outline"
-                                      borderRadius="xl"
-                                      borderColor="gray.300"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        openEditStudentModal(st);
-                                      }}
-                                    >
-                                      <Image src={editIconUrl} alt="Editar alumno" boxSize={actionIconSize} />
-                                    </Button>
-                                    <Button
-                                      size={actionIconButtonSize}
-                                      variant="outline"
-                                      borderRadius="xl"
-                                      borderColor="gray.300"
-                                      color="black"
-                                      _hover={{ bg: "red.700", borderColor: "red.800", color: "white" }}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setDeactivateStudent(st);
-                                        setDeactivateError(null);
-                                        setDeactivateModalOpen(true);
-                                      }}
-                                    >
-                                      <Box
-                                        as="svg"
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        viewBox="0 0 24 24"
-                                        boxSize={actionIconSize}
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      >
-                                        <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
-                                        <path d="m14.5 9.5-5 5" />
-                                        <path d="m9.5 9.5 5 5" />
-                                      </Box>
-                                    </Button>
-                                  </HStack>
-                                  <Button
-                                    size={{ base: "sm", xl: "md", "2xl": "lg" }}
-                                    variant="outline"
-                                    borderRadius="lg"
-                                    borderColor="gray.300"
-                                    color="gray.800"
-                                    _hover={{ borderColor: "gray.500", bg: "gray.50" }}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      openAssignRoutineModal(st);
-                                    }}
-                                    h="40px"
-                                    px={3}
-                                  >
-                                    <HStack spacing={2}>
-                                      <Box
-                                        as="svg"
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        viewBox="0 0 24 24"
-                                        boxSize="18px"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2.6"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      >
-                                        <rect width="18" height="18" x="3" y="3" rx="2" />
-                                        <path d="M8 12h8" />
-                                        <path d="M12 8v8" />
-                                      </Box>
-                                      <Text fontSize="sm" fontWeight="bold">
-                                        Asignar rutina
-                                      </Text>
-                                    </HStack>
-                                  </Button>
-                                </HStack>
                               </Stack>
                             </Collapse>
                           </Box>
-                        ))}
-                        {!activeStudents.length && <Text color="gray.600" ml={{ base: 0, md: "10%" }}>No hay alumnos activos.</Text>}
-                      </Stack>
+                          <Collapse in={expandedStudent === st.id} animateOpacity>
+                            <HStack justify="flex-start" align="center" px={5} py={3} bg="gray.50" borderTopWidth="1px" borderColor="gray.200">
+                              <HStack spacing={2}>
+                                <Button
+                                  size={actionIconButtonSize}
+                                  variant="ghost"
+                                  color="gray.400"
+                                  _hover={{ bg: "gray.100", color: "blue.600" }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openEditStudentModal(st);
+                                  }}
+                                >
+                                  <Image src={editIconUrl} alt="Editar alumno" boxSize={actionIconSize} />
+                                </Button>
+                                <Button
+                                  size={actionIconButtonSize}
+                                  variant="ghost"
+                                  color="gray.400"
+                                  _hover={{ bg: "red.50", color: "red.600" }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDeactivateStudent(st);
+                                    setDeactivateError(null);
+                                    setDeactivateModalOpen(true);
+                                  }}
+                                >
+                                  <Box
+                                    as="svg"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    boxSize={actionIconSize}
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+                                    <path d="m14.5 9.5-5 5" />
+                                    <path d="m9.5 9.5 5 5" />
+                                  </Box>
+                                </Button>
+                              </HStack>
+                              <Button
+                                size={{ base: "sm", xl: "md", "2xl": "lg" }}
+                                variant="outline"
+                                borderRadius="lg"
+                                borderColor="gray.300"
+                                color="gray.800"
+                                _hover={{ borderColor: "gray.500", bg: "gray.50" }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openAssignRoutineModal(st);
+                                }}
+                                h="40px"
+                                px={3}
+                              >
+                                <HStack spacing={2}>
+                                  <Box
+                                    as="svg"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    boxSize="18px"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.6"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <rect width="18" height="18" x="3" y="3" rx="2" />
+                                    <path d="M8 12h8" />
+                                    <path d="M12 8v8" />
+                                  </Box>
+                                  <Text fontSize="sm" fontWeight="bold">
+                                    Asignar rutina
+                                  </Text>
+                                </HStack>
+                              </Button>
+                            </HStack>
+                          </Collapse>
+                        </Box>
+                      ))}
+                      {!activeStudents.length && <Text color="gray.600">No hay alumnos activos.</Text>}
+                    </Stack>
 
-                      <Stack spacing={3}>
-                        <Heading size="md" color="black" ml={{ base: 0, md: "10%" }}>
-                          Alumnos inactivos
-                        </Heading>
-                        {inactiveStudents.map((st) => (
-                          <Box
-                            key={st.id}
-                            p={{ base: 4, xl: 5 }}
-                            w={{ base: "100%", md: "75%" }}
-                            ml={{ base: 0, md: "10%" }}
-                            borderWidth="1px"
-                            borderRadius="lg"
-                            borderColor="gray.200"
-                            bg="white"
-                            shadow="sm"
-                            _hover={{ borderColor: "gray.400", cursor: "pointer" }}
-                            onClick={() => setExpandedStudent((prev) => (prev === st.id ? null : st.id))}
-                          >
+                    <Stack spacing={3}>
+                      <Heading size="md" color="black">
+                        Alumnos inactivos
+                      </Heading>
+                      {inactiveStudents.map((st) => (
+                        <Box
+                          key={st.id}
+                          borderWidth="1px"
+                          borderRadius="12px"
+                          borderColor="gray.200"
+                          bg="white"
+                          overflow="hidden"
+                          _hover={{ borderColor: "gray.300", cursor: "pointer" }}
+                          onClick={() => setExpandedStudent((prev) => (prev === st.id ? null : st.id))}
+                        >
+                          <Box p={{ base: 4, xl: 5 }}>
                             <HStack justify="space-between" align="start">
-                              <Heading size="md" color="gray.900" fontWeight="normal" fontSize={{ base: "lg", xl: "xl", "2xl": "2xl" }}>
+                              <Heading size="md" color="gray.900" fontWeight="normal">
                                 {st.full_name}
                               </Heading>
                               <Badge colorScheme="red">Inactivo</Badge>
@@ -2265,110 +2484,59 @@ function App() {
                                 {st.contact && <Text>Contacto: {st.contact}</Text>}
                                 {typeof st.bow_pounds === "number" && <Text>Arco: {st.bow_pounds} lb</Text>}
                                 {typeof st.arrows_available === "number" && <Text>Flechas: {st.arrows_available}</Text>}
-                                <HStack justify="space-between" align="center" pt={2}>
-                                  <HStack spacing={2}>
-                                    <Button
-                                      size={actionIconButtonSize}
-                                      variant="outline"
-                                      borderRadius="xl"
-                                      borderColor="gray.300"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        openEditStudentModal(st);
-                                      }}
-                                    >
-                                      <Image src={editIconUrl} alt="Editar alumno" boxSize={actionIconSize} />
-                                    </Button>
-                                    <Button
-                                      size={actionIconButtonSize}
-                                      variant="outline"
-                                      borderRadius="xl"
-                                      borderColor="gray.300"
-                                      color="black"
-                                      _hover={{ bg: "green.600", borderColor: "green.700", color: "white" }}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActivateStudent(st);
-                                        setActivateError(null);
-                                        setActivateModalOpen(true);
-                                      }}
-                                    >
-                                      <Box
-                                        as="svg"
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        viewBox="0 0 24 24"
-                                        boxSize="16px"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      >
-                                        <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
-                                        <path d="m9 12 2 2 4-4" />
-                                      </Box>
-                                    </Button>
-                                  </HStack>
-                                  <Button
-                                    size={{ base: "sm", xl: "md", "2xl": "lg" }}
-                                    variant="outline"
-                                    borderRadius="lg"
-                                    borderColor="gray.300"
-                                    color="gray.800"
-                                    _hover={{ borderColor: "gray.500", bg: "gray.50" }}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      openAssignRoutineModal(st);
-                                    }}
-                                    h="40px"
-                                    px={3}
-                                  >
-                                    <HStack spacing={2}>
-                                      <Box
-                                        as="svg"
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        viewBox="0 0 24 24"
-                                        boxSize="18px"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2.6"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      >
-                                        <rect width="18" height="18" x="3" y="3" rx="2" />
-                                        <path d="M8 12h8" />
-                                        <path d="M12 8v8" />
-                                      </Box>
-                                      <Text fontSize="sm" fontWeight="bold">
-                                        Asignar rutina
-                                      </Text>
-                                    </HStack>
-                                  </Button>
-                                </HStack>
                               </Stack>
                             </Collapse>
                           </Box>
-                        ))}
-                        {!inactiveStudents.length && <Text color="gray.600" ml={{ base: 0, md: "10%" }}>No hay alumnos inactivos.</Text>}
-                      </Stack>
+                          <Collapse in={expandedStudent === st.id} animateOpacity>
+                            <HStack justify="space-between" align="center" px={5} py={3} bg="gray.50" borderTopWidth="1px" borderColor="gray.200">
+                              <HStack spacing={2}>
+                                <Button
+                                  size={actionIconButtonSize}
+                                  variant="ghost"
+                                  color="gray.400"
+                                  _hover={{ bg: "gray.100", color: "blue.600" }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openEditStudentModal(st);
+                                  }}
+                                >
+                                  <Image src={editIconUrl} alt="Editar alumno" boxSize={actionIconSize} />
+                                </Button>
+                                <Button
+                                  size={actionIconButtonSize}
+                                  variant="ghost"
+                                  color="gray.400"
+                                  _hover={{ bg: "green.50", color: "green.600" }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActivateStudent(st);
+                                    setActivateError(null);
+                                    setActivateModalOpen(true);
+                                  }}
+                                >
+                                  <Box
+                                    as="svg"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    boxSize="16px"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+                                    <path d="m9 12 2 2 4-4" />
+                                  </Box>
+                                </Button>
+                              </HStack>
+                            </HStack>
+                          </Collapse>
+                        </Box>
+                      ))}
+                      {!inactiveStudents.length && <Text color="gray.600">No hay alumnos inactivos.</Text>}
                     </Stack>
-                    <Stack flex={{ base: "0 0 160px", xl: "0 0 220px", "2xl": "0 0 260px" }} pt={2} ml="auto" mr={{ base: "50px", xl: "70px", "2xl": "90px" }} spacing={3}>
-                      <Button
-                        variant="outline"
-                        borderColor="gray.300"
-                        borderRadius="lg"
-                        color="gray.800"
-                        _hover={{ borderColor: "gray.500" }}
-                        onClick={() => setCreateStudentModalOpen(true)}
-                        w="full"
-                      >
-                        <HStack justify="center" spacing={2}>
-                          <Image src={userPlusIconUrl} alt="Agregar alumno" boxSize="18px" />
-                          <Text>Agregar alumno</Text>
-                        </HStack>
-                      </Button>
-                    </Stack>
-                  </HStack>
+                  </Stack>
                 </Stack>
               )}
               {profSection === "perfil" && (
@@ -2381,53 +2549,75 @@ function App() {
           </GridItem>
         </Grid>
         <Modal isOpen={editModalOpen} onClose={() => setEditModalOpen(false)} isCentered>
-          <ModalOverlay />
-          <ModalContent maxW="700px">
-            <ModalHeader>Editar ejercicio</ModalHeader>
-            <ModalBody maxH="70vh" overflowY="auto">
-              <Stack spacing={3}>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW="560px" borderRadius="12px" overflow="hidden">
+            <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
+              <HStack justify="space-between">
+                <Text fontWeight="700" color="gray.900">Editar ejercicio</Text>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => setEditModalOpen(false)}>
+                  ×
+                </Button>
+              </HStack>
+            </ModalHeader>
+            <ModalBody maxH="70vh" overflowY="auto" py={5}>
+              <Stack spacing={4}>
                 <FormControl>
-                  <FormLabel>Nombre</FormLabel>
-                  <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>Flechas</FormLabel>
+                  <FormLabel color="gray.700" fontSize="sm">Nombre</FormLabel>
                   <Input
-                    type="number"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    min={0}
-                    step={1}
-                    value={editArrows}
-                    onChange={(e) => setEditArrows(normalizeInt(e.target.value))}
-                    onKeyDown={(e) => blockInvalidKeys(e, false)}
-                    onBeforeInput={handleBeforeInputInt}
-                    onPaste={handlePasteInt}
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    borderColor="gray.300"
+                    borderRadius="8px"
+                    _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
                   />
                 </FormControl>
+                <SimpleGrid columns={2} spacing={3}>
+                  <FormControl>
+                    <FormLabel color="gray.700" fontSize="sm">Flechas</FormLabel>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      min={0}
+                      step={1}
+                      value={editArrows}
+                      onChange={(e) => setEditArrows(normalizeInt(e.target.value))}
+                      onKeyDown={(e) => blockInvalidKeys(e, false)}
+                      onBeforeInput={handleBeforeInputInt}
+                      onPaste={handlePasteInt}
+                      borderColor="gray.300"
+                      borderRadius="8px"
+                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel color="gray.700" fontSize="sm">Distancia (m)</FormLabel>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step={0.5}
+                      value={editDistance}
+                      onChange={(e) => setEditDistance(normalizeFloat(e.target.value))}
+                      onKeyDown={(e) => blockInvalidKeys(e, true)}
+                      onBeforeInput={handleBeforeInputFloat}
+                      onPaste={handlePasteFloat}
+                      borderColor="gray.300"
+                      borderRadius="8px"
+                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                    />
+                  </FormControl>
+                </SimpleGrid>
                 <FormControl>
-                  <FormLabel>Distancia (m)</FormLabel>
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    step={0.5}
-                    value={editDistance}
-                    onChange={(e) => setEditDistance(normalizeFloat(e.target.value))}
-                    onKeyDown={(e) => blockInvalidKeys(e, true)}
-                    onBeforeInput={handleBeforeInputFloat}
-                    onPaste={handlePasteFloat}
-                  />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>Descripción</FormLabel>
+                  <FormLabel color="gray.700" fontSize="sm">Descripción</FormLabel>
                   <Textarea
                     value={editDescription}
                     onChange={(e) => setEditDescription(e.target.value)}
-                    minH="360px"
+                    minH="120px"
                     resize="vertical"
                     borderColor="gray.300"
                     _hover={{ borderColor: "gray.500" }}
+                    _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
                     fontSize="md"
                   />
                 </FormControl>
@@ -2439,16 +2629,16 @@ function App() {
                 )}
               </Stack>
             </ModalBody>
-            <ModalFooter>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
               <HStack spacing={3}>
-                <Button variant="ghost" onClick={() => setEditModalOpen(false)}>
+                <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={() => setEditModalOpen(false)}>
                   Cancelar
                 </Button>
                 <Button
-                  bg="black"
+                  bg="#f97316"
                   color="white"
-                  _hover={{ bg: "gray.800" }}
-                  _active={{ bg: "gray.900" }}
+                  _hover={{ bg: "#ea580c" }}
+                  _active={{ bg: "#c2410c" }}
                   isLoading={editLoading}
                   isDisabled={!editName || editArrows === "" || editDistance === ""}
                   onClick={handleEditSave}
@@ -2459,54 +2649,78 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={createModalOpen} onClose={() => setCreateModalOpen(false)} isCentered>
-          <ModalOverlay />
-          <ModalContent maxW="700px">
-            <ModalHeader>Crear ejercicio</ModalHeader>
-            <ModalBody maxH="70vh" overflowY="auto">
-              <Stack spacing={3}>
+        <Modal isOpen={createModalOpen} onClose={closeCreateExerciseModal} isCentered>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW="560px" borderRadius="12px" overflow="hidden">
+            <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
+              <HStack justify="space-between">
+                <Text fontWeight="700" color="gray.900">Nuevo Ejercicio</Text>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={closeCreateExerciseModal}>
+                  ×
+                </Button>
+              </HStack>
+            </ModalHeader>
+            <ModalBody maxH="70vh" overflowY="auto" py={5}>
+              <Stack spacing={4}>
                 <FormControl>
-                  <FormLabel>Nombre</FormLabel>
-                  <Input value={createName} onChange={(e) => setCreateName(e.target.value)} />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>Flechas</FormLabel>
+                  <FormLabel color="gray.700" fontSize="sm">Nombre</FormLabel>
                   <Input
-                    type="number"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    min={0}
-                    step={1}
-                    value={createArrows}
-                    onChange={(e) => setCreateArrows(normalizeInt(e.target.value))}
-                    onKeyDown={(e) => blockInvalidKeys(e, false)}
-                    onBeforeInput={handleBeforeInputInt}
-                    onPaste={handlePasteInt}
+                    value={createName}
+                    onChange={(e) => setCreateName(e.target.value)}
+                    borderColor="gray.300"
+                    borderRadius="8px"
+                    _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
                   />
                 </FormControl>
+                <SimpleGrid columns={2} spacing={3}>
+                  <FormControl>
+                    <FormLabel color="gray.700" fontSize="sm">Flechas</FormLabel>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      min={0}
+                      step={1}
+                      value={createArrows}
+                      onChange={(e) => setCreateArrows(normalizeInt(e.target.value))}
+                      onKeyDown={(e) => blockInvalidKeys(e, false)}
+                      onBeforeInput={handleBeforeInputInt}
+                      onPaste={handlePasteInt}
+                      borderColor="gray.300"
+                      borderRadius="8px"
+                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel color="gray.700" fontSize="sm">Distancia (m)</FormLabel>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step={0.5}
+                      value={createDistance}
+                      onChange={(e) => setCreateDistance(normalizeFloat(e.target.value))}
+                      onKeyDown={(e) => blockInvalidKeys(e, true)}
+                      onBeforeInput={handleBeforeInputFloat}
+                      onPaste={handlePasteFloat}
+                      borderColor="gray.300"
+                      borderRadius="8px"
+                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                    />
+                  </FormControl>
+                </SimpleGrid>
                 <FormControl>
-                  <FormLabel>Distancia (m)</FormLabel>
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    step={0.5}
-                    value={createDistance}
-                    onChange={(e) => setCreateDistance(normalizeFloat(e.target.value))}
-                    onKeyDown={(e) => blockInvalidKeys(e, true)}
-                    onBeforeInput={handleBeforeInputFloat}
-                    onPaste={handlePasteFloat}
-                  />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>Descripción</FormLabel>
+                  <FormLabel color="gray.700" fontSize="sm">Descripción</FormLabel>
                   <Textarea
                     value={createDescription}
                     onChange={(e) => setCreateDescription(e.target.value)}
-                    minH="180px"
+                    placeholder="Escribe los detalles del ejercicio..."
+                    minH="120px"
                     resize="vertical"
                     borderColor="gray.300"
+                    borderRadius="8px"
                     _hover={{ borderColor: "gray.500" }}
+                    _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
                     fontSize="md"
                   />
                 </FormControl>
@@ -2518,16 +2732,16 @@ function App() {
                 )}
               </Stack>
             </ModalBody>
-            <ModalFooter>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
               <HStack spacing={3}>
-                <Button variant="ghost" onClick={() => setCreateModalOpen(false)}>
+                <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={closeCreateExerciseModal}>
                   Cancelar
                 </Button>
                 <Button
-                  bg="black"
+                  bg="#f97316"
                   color="white"
-                  _hover={{ bg: "gray.800" }}
-                  _active={{ bg: "gray.900" }}
+                  _hover={{ bg: "#ea580c" }}
+                  _active={{ bg: "#c2410c" }}
                   isLoading={createLoading}
                   isDisabled={!createName || createArrows === "" || createDistance === ""}
                   onClick={handleCreateSave}
@@ -2539,18 +2753,51 @@ function App() {
           </ModalContent>
         </Modal>
         <Modal isOpen={createRoutineModalOpen} onClose={closeCreateRoutineModal} isCentered>
-          <ModalOverlay />
-          <ModalContent maxW={routineModalMaxW} maxH="86vh" transition="max-width 0.3s ease, max-height 0.3s ease" overflowY="auto" overflowX="hidden">
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent
+            maxW={routineModalMaxW}
+            maxH="86vh"
+            transition="max-width 0.3s ease, max-height 0.3s ease"
+            overflowY="auto"
+            overflowX="hidden"
+            borderRadius="14px"
+            borderTop={routineModalStep === 0 ? "6px solid" : "0 solid"}
+            borderTopColor={routineModalStep === 0 ? "#f97316" : "transparent"}
+          >
             <Box h={routineModalBodyHeight ? `${routineModalBodyHeight}px` : `${routineModalMinHeight}px`} transition="height 0.3s ease" overflow="hidden">
               <Box px={6} py={6}>
                 {routineModalStep === 0 && (
-                  <Stack ref={routineStepRef} spacing={6} animation={`${routineStepSlide} 0.3s ease`}>
-                  <Heading size="md">{editingRoutineId ? "Editar nombre de la rutina" : "Ingrese el nombre de la rutina"}</Heading>
+                  <Stack ref={routineStepRef} spacing={6} animation={`${routineStepSlide} 0.3s ease`} px={2} pt={2} pb={0} w="full" maxW="420px" mx="auto">
+                  <Stack spacing={2} align="center" textAlign="center">
+                    <Box w="56px" h="56px" borderRadius="full" bg="#fff7ed" display="flex" alignItems="center" justifyContent="center" color="#f97316" fontWeight="700">
+                      <Box
+                        as="svg"
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        boxSize="20px"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 .83.18 2 2 0 0 0 .83-.18l8.58-3.9a1 1 0 0 0 0-1.831z" />
+                        <path d="M16 17h6" />
+                        <path d="M19 14v6" />
+                        <path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 .825.178" />
+                        <path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l2.116-.962" />
+                      </Box>
+                    </Box>
+                    <Heading size="md">{editingRoutineId ? "Editar rutina" : "Nueva Rutina"}</Heading>
+                  </Stack>
                   <FormControl>
                     <Input
                       value={routineName}
                       onChange={(e) => setRoutineName(e.target.value)}
-                      placeholder="Nombre de rutina"
+                      placeholder="Ingresar el nombre de la rutina..."
+                      borderColor="gray.300"
+                      borderRadius="10px"
+                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
                       onKeyDown={(e) => {
                         if (e.key !== "Enter") return;
                         if (!routineName.trim()) return;
@@ -2563,17 +2810,17 @@ function App() {
                       }}
                     />
                   </FormControl>
-                  <HStack spacing={3} justify="flex-end">
+                  <HStack spacing={3} justify="center" wrap="wrap">
                     {routineAssignStudentId && !editingRoutineId && (
                       <Button variant="outline" borderColor="gray.300" onClick={handleBackToAssignOptionsFromCreate}>
                         Volver
                       </Button>
                     )}
                     <Button
-                      bg="black"
+                      bg="#f97316"
                       color="white"
-                      _hover={{ bg: "gray.800" }}
-                      _active={{ bg: "gray.900" }}
+                      _hover={{ bg: "#ea580c" }}
+                      _active={{ bg: "#c2410c" }}
                       isDisabled={!routineName.trim()}
                       onClick={() => {
                         setRoutineDayCount((prev) => Math.max(1, Math.min(7, prev)));
@@ -2585,22 +2832,16 @@ function App() {
                     >
                       Siguiente
                     </Button>
-                    <Button
-                      bg="white"
-                      color="black"
-                      borderColor="gray.300"
-                      borderWidth="1px"
-                      _hover={{ bg: "gray.100" }}
-                      onClick={closeCreateRoutineModal}
-                    >
+                    <Button variant="ghost" color="gray.600" _hover={{ bg: "transparent", color: "gray.800" }} onClick={closeCreateRoutineModal}>
                       Cancelar
                     </Button>
                   </HStack>
                   </Stack>
                 )}
                 {routineModalStep === 2 && (
-                  <Stack ref={routineStepRef} key={`${currentRoutineDayKey || "dia"}-${routineDayCursor}`} spacing={4} animation={`${routineDaySlide} 0.3s ease`}>
-                  <Heading size="md">{currentRoutineDayLabel || "Día"}</Heading>
+                  <Stack ref={routineStepRef} key={`${currentRoutineDayKey || "dia"}-${routineDayCursor}`} spacing={6} animation={`${routineDaySlide} 0.3s ease`}>
+                  <Box p={4}>
+                  <Heading size="md" mb={4}>{currentRoutineDayLabel || "Día"}</Heading>
                   <InputGroup maxW={{ base: "360px", xl: "480px", "2xl": "560px" }}>
                     <InputLeftElement pointerEvents="none" color="gray.500">
                       <SearchIcon boxSize={3.5} />
@@ -2609,14 +2850,14 @@ function App() {
                       value={routineExerciseSearch}
                       onChange={(e) => setRoutineExerciseSearch(e.target.value)}
                       placeholder="Buscar ejercicios"
-                      bg="gray.100"
-                      borderColor="gray.100"
-                      borderRadius="lg"
-                      _hover={{ borderColor: "gray.300" }}
-                      _focus={{ borderColor: "gray.400", bg: "white" }}
+                      bg="white"
+                      borderColor="gray.300"
+                      borderRadius="8px"
+                      _hover={{ borderColor: "gray.400" }}
+                      _focus={{ borderColor: "#f97316", bg: "white" }}
                     />
                   </InputGroup>
-                  <Stack spacing={2} maxH="300px" overflowY="auto" pr={1}>
+                  <Stack spacing={2} maxH="300px" overflowY="auto" pr={1} mt={4}>
                     {filteredRoutineExercises.map((ex) => {
                       const selectedForCurrentDay =
                         !!currentRoutineDayKey && (routineExercisesByDay[currentRoutineDayKey] || []).includes(ex.id);
@@ -2625,11 +2866,11 @@ function App() {
                           key={ex.id}
                           p={3}
                           borderWidth="1px"
-                          borderColor={selectedForCurrentDay ? "gray.500" : "gray.200"}
+                          borderColor={selectedForCurrentDay ? "#f97316" : "gray.200"}
                           borderRadius="md"
-                          bg="white"
+                          bg={selectedForCurrentDay ? "#fff7ed" : "white"}
                           cursor="pointer"
-                          _hover={{ borderColor: "gray.400" }}
+                          _hover={{ borderColor: selectedForCurrentDay ? "#f97316" : "gray.400" }}
                           onClick={() => currentRoutineDayKey && toggleRoutineExerciseForDay(currentRoutineDayKey, ex.id)}
                         >
                           <HStack justify="space-between" align="center" spacing={3}>
@@ -2645,7 +2886,7 @@ function App() {
                               isChecked={selectedForCurrentDay}
                               onClick={(e) => e.stopPropagation()}
                               onChange={() => currentRoutineDayKey && toggleRoutineExerciseForDay(currentRoutineDayKey, ex.id)}
-                              colorScheme="gray"
+                              colorScheme="orange"
                               sx={{ transform: "scale(1.25)", transformOrigin: "center" }}
                             />
                           </HStack>
@@ -2672,21 +2913,22 @@ function App() {
                       <Text>Crear ejercicio</Text>
                     </HStack>
                   </Button>
+                  </Box>
                   {createRoutineError && (
                     <Alert status="error" borderRadius="md">
                       <AlertIcon />
                       {createRoutineError}
                     </Alert>
                   )}
-                  <HStack spacing={3} justify="flex-end">
+                  <HStack spacing={3} justify="flex-end" p={4}>
                     <Button variant="outline" borderColor="gray.300" onClick={() => setRoutineModalStep(0)}>
                       Volver
                     </Button>
                     <Button
-                      bg="black"
+                      bg="#f97316"
                       color="white"
-                      _hover={{ bg: "gray.800" }}
-                      _active={{ bg: "gray.900" }}
+                      _hover={{ bg: "#ea580c" }}
+                      _active={{ bg: "#c2410c" }}
                       isDisabled={!currentRoutineDayKey || (routineExercisesByDay[currentRoutineDayKey] || []).length === 0}
                       isLoading={createRoutineLoading}
                       onClick={handleRoutineExerciseContinue}
@@ -2701,13 +2943,18 @@ function App() {
                 )}
                 {routineModalStep === 3 && (
                   <Stack ref={routineStepRef} spacing={4} animation={`${routineStepSlide} 0.3s ease`}>
-                    <Heading size="md">Resumen de la rutina</Heading>
+                    <HStack justify="space-between" px={6} py={4} borderBottomWidth="1px" borderColor="gray.200">
+                      <Heading size="md">Resumen de la rutina</Heading>
+                      <Button variant="ghost" size="sm" color="gray.500" onClick={closeCreateRoutineModal}>×</Button>
+                    </HStack>
                     <Stack
                       ref={routineSummaryListRef}
                       spacing={3}
                       maxH={`${routineSummaryListMaxH}px`}
                       overflowY="auto"
                       pr={1}
+                      px={4}
+                      py={3}
                       onWheel={handleRoutineSummaryWheel}
                       sx={{ overscrollBehaviorY: "contain" }}
                     >
@@ -2834,13 +3081,30 @@ function App() {
                         </HStack>
                       )}
                     </Stack>
+                    {routineAssignStudentId && !editingRoutineId && (
+                      <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3} px={4}>
+                        <FormControl>
+                          <FormLabel>Inicio de rutina</FormLabel>
+                          <Input
+                            type="date"
+                            value={assignmentStartDate}
+                            maxW="240px"
+                            onChange={(e) => setAssignmentStartDate(e.target.value || getTodayIsoLocal())}
+                          />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel>Fin de rutina</FormLabel>
+                          <Input type="date" value={assignmentEndDate} maxW="240px" isReadOnly />
+                        </FormControl>
+                      </SimpleGrid>
+                    )}
                     {createRoutineError && (
-                      <Alert status="error" borderRadius="md">
+                      <Alert status="error" borderRadius="md" mx={4}>
                         <AlertIcon />
                         {createRoutineError}
                       </Alert>
                     )}
-                    <HStack spacing={3} justify="flex-end">
+                    <HStack spacing={3} justify="flex-end" p={4}>
                       <Button
                         variant="outline"
                         borderColor="gray.300"
@@ -2852,10 +3116,10 @@ function App() {
                         Volver
                       </Button>
                       <Button
-                        bg="black"
+                        bg="#f97316"
                         color="white"
-                        _hover={{ bg: "gray.800" }}
-                        _active={{ bg: "gray.900" }}
+                        _hover={{ bg: "#ea580c" }}
+                        _active={{ bg: "#c2410c" }}
                         isLoading={createRoutineLoading}
                         isDisabled={routineBuilderDays.some((day) => (routineExercisesByDay[day.key] || []).length === 0)}
                         onClick={handleCreateOrUpdateRoutineFromSummary}
@@ -2873,10 +3137,17 @@ function App() {
           </ModalContent>
         </Modal>
         <Modal isOpen={routineCreateAddExerciseModalOpen} onClose={() => setRoutineCreateAddExerciseModalOpen(false)} isCentered>
-          <ModalOverlay />
-          <ModalContent maxW="700px">
-            <ModalHeader>Agregar ejercicio al día</ModalHeader>
-            <ModalBody>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW="620px" borderRadius="12px" overflow="hidden">
+            <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
+              <HStack justify="space-between">
+                <Text fontWeight="700" color="gray.900">Agregar ejercicio al día</Text>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => setRoutineCreateAddExerciseModalOpen(false)}>
+                  ×
+                </Button>
+              </HStack>
+            </ModalHeader>
+            <ModalBody py={4}>
               <Stack spacing={3}>
                 <InputGroup>
                   <InputLeftElement pointerEvents="none">
@@ -2886,12 +3157,14 @@ function App() {
                     placeholder="Buscar ejercicio..."
                     value={routineCreateAddExerciseSearch}
                     onChange={(e) => setRoutineCreateAddExerciseSearch(e.target.value)}
+                    borderColor="gray.300"
+                    borderRadius="8px"
                   />
                 </InputGroup>
                 <Stack
                   ref={routineCreateAddExerciseListRef}
                   spacing={2}
-                  maxH="45vh"
+                  maxH="50vh"
                   overflowY="auto"
                   pr={1}
                   onWheel={handleRoutineCreateAddExerciseListWheel}
@@ -2912,9 +3185,9 @@ function App() {
                       return !(routineExercisesByDay[routineCreateAddExerciseDayKey] || []).includes(exercise.id);
                     })
                     .map((exercise) => (
-                      <HStack key={`create-day-add-${exercise.id}`} justify="space-between" borderWidth="1px" borderColor="gray.200" borderRadius="md" p={2}>
+                      <HStack key={`create-day-add-${exercise.id}`} justify="space-between" borderWidth="1px" borderColor="gray.200" borderRadius="8px" p={3}>
                         <Stack spacing={0}>
-                          <Text fontSize="sm" color="gray.800">{exercise.name}</Text>
+                          <Text fontSize="sm" color="gray.800" fontWeight="500">{exercise.name}</Text>
                           <Text fontSize="xs" color="gray.500">
                             Flechas: {exercise.arrows_count} | Distancia: {Number(exercise.distance_m)} m
                           </Text>
@@ -2923,6 +3196,9 @@ function App() {
                           size="sm"
                           variant="outline"
                           borderColor="gray.300"
+                          borderRadius="8px"
+                          bg="white"
+                          _hover={{ bg: "gray.50", borderColor: "gray.400" }}
                           onClick={() =>
                             routineCreateAddExerciseDayKey &&
                             addExerciseToRoutineSummaryDay(routineCreateAddExerciseDayKey, exercise.id)
@@ -2935,8 +3211,8 @@ function App() {
                 </Stack>
               </Stack>
             </ModalBody>
-            <ModalFooter>
-              <Button variant="ghost" onClick={() => setRoutineCreateAddExerciseModalOpen(false)}>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
+              <Button variant="outline" borderColor="gray.300" bg="white" _hover={{ bg: "gray.50" }} onClick={() => setRoutineCreateAddExerciseModalOpen(false)}>
                 Cancelar
               </Button>
             </ModalFooter>
@@ -2950,52 +3226,75 @@ function App() {
           }}
           isCentered
         >
-          <ModalOverlay />
-          <ModalContent maxW="700px">
-            <ModalHeader>Editar ejercicio</ModalHeader>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW="560px" borderRadius="12px" overflow="hidden">
+            <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
+              <HStack justify="space-between">
+                <Text fontWeight="700" color="gray.900">Editar ejercicio</Text>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => setRoutineCreateEditExerciseModalOpen(false)}>
+                  ×
+                </Button>
+              </HStack>
+            </ModalHeader>
             <ModalBody>
-              <Stack spacing={3}>
+              <Stack spacing={4}>
+                <SimpleGrid columns={2} spacing={3}>
+                  <FormControl>
+                    <FormLabel color="gray.700" fontSize="sm">Flechas</FormLabel>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      min={0}
+                      step={1}
+                      value={routineCreateEditArrows}
+                      onChange={(e) => setRoutineCreateEditArrows(normalizeInt(e.target.value))}
+                      onKeyDown={(e) => blockInvalidKeys(e, false)}
+                      onBeforeInput={handleBeforeInputInt}
+                      onPaste={handlePasteInt}
+                      borderColor="gray.300"
+                      borderRadius="8px"
+                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel color="gray.700" fontSize="sm">Distancia (m)</FormLabel>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step={0.5}
+                      value={routineCreateEditDistance}
+                      onChange={(e) => setRoutineCreateEditDistance(normalizeFloat(e.target.value))}
+                      onKeyDown={(e) => blockInvalidKeys(e, true)}
+                      onBeforeInput={handleBeforeInputFloat}
+                      onPaste={handlePasteFloat}
+                      borderColor="gray.300"
+                      borderRadius="8px"
+                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                    />
+                  </FormControl>
+                </SimpleGrid>
                 <FormControl>
-                  <FormLabel>Flechas</FormLabel>
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    min={0}
-                    step={1}
-                    value={routineCreateEditArrows}
-                    onChange={(e) => setRoutineCreateEditArrows(normalizeInt(e.target.value))}
-                    onKeyDown={(e) => blockInvalidKeys(e, false)}
-                    onBeforeInput={handleBeforeInputInt}
-                    onPaste={handlePasteInt}
+                  <FormLabel color="gray.700" fontSize="sm">Descripción</FormLabel>
+                  <Textarea
+                    value={routineCreateEditDescription}
+                    onChange={(e) => setRoutineCreateEditDescription(e.target.value)}
+                    minH="120px"
+                    resize="vertical"
+                    borderColor="gray.300"
+                    borderRadius="8px"
+                    _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
                   />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>Distancia (m)</FormLabel>
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    step={0.5}
-                    value={routineCreateEditDistance}
-                    onChange={(e) => setRoutineCreateEditDistance(normalizeFloat(e.target.value))}
-                    onKeyDown={(e) => blockInvalidKeys(e, true)}
-                    onBeforeInput={handleBeforeInputFloat}
-                    onPaste={handlePasteFloat}
-                  />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>Descripción</FormLabel>
-                  <Textarea value={routineCreateEditDescription} onChange={(e) => setRoutineCreateEditDescription(e.target.value)} minH="120px" resize="vertical" />
                 </FormControl>
               </Stack>
             </ModalBody>
-            <ModalFooter>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
               <HStack spacing={3}>
-                <Button variant="ghost" onClick={() => setRoutineCreateEditExerciseModalOpen(false)}>
+                <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={() => setRoutineCreateEditExerciseModalOpen(false)}>
                   Cancelar
                 </Button>
-                <Button bg="black" color="white" _hover={{ bg: "gray.800" }} _active={{ bg: "gray.900" }} onClick={saveRoutineCreateEditExercise}>
+                <Button bg="#f97316" color="white" _hover={{ bg: "#ea580c" }} _active={{ bg: "#c2410c" }} onClick={saveRoutineCreateEditExercise}>
                   Guardar
                 </Button>
               </HStack>
@@ -3003,94 +3302,177 @@ function App() {
           </ModalContent>
         </Modal>
         <Modal isOpen={deleteRoutineDayConfirmOpen} onClose={() => setDeleteRoutineDayConfirmOpen(false)} isCentered>
-          <ModalOverlay />
-          <ModalContent maxW="420px">
-            <ModalHeader>¿Eliminar día?</ModalHeader>
-            <ModalBody>
-              <Text color="gray.700">
-                Se eliminará {deleteRoutineDayTargetNumber ? `Día ${deleteRoutineDayTargetNumber}` : "este día"} de la rutina.
-              </Text>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW="420px" borderRadius="14px" overflow="hidden">
+            <ModalBody py={8}>
+              <Stack spacing={4} align="center" textAlign="center">
+                <Box w="56px" h="56px" borderRadius="full" bg="#fee2e2" display="flex" alignItems="center" justifyContent="center">
+                  <Box
+                    as="svg"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    boxSize="20px"
+                    fill="none"
+                    stroke="#ef4444"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </Box>
+                </Box>
+                <Heading size="md" color="gray.900">
+                  ¿Eliminar día?
+                </Heading>
+                <Text color="gray.500" fontSize="sm" maxW="300px">
+                  Se eliminará{" "}
+                  <Box as="span" fontWeight="600" color="gray.700">
+                    {deleteRoutineDayTargetNumber ? `Día ${deleteRoutineDayTargetNumber}` : "este día"}
+                  </Box>{" "}
+                  de la rutina. Esta acción no se puede deshacer.
+                </Text>
+                <HStack spacing={3} pt={2}>
+                  <Button
+                    bg="white"
+                    color="#ef4444"
+                    borderColor="#fecaca"
+                    borderWidth="1px"
+                    _hover={{ bg: "#fef2f2" }}
+                    onClick={confirmDeleteRoutineDay}
+                  >
+                    Eliminar
+                  </Button>
+                  <Button
+                    bg="#f97316"
+                    color="white"
+                    _hover={{ bg: "#ea580c" }}
+                    _active={{ bg: "#c2410c" }}
+                    onClick={() => setDeleteRoutineDayConfirmOpen(false)}
+                  >
+                    Cancelar
+                  </Button>
+                </HStack>
+              </Stack>
             </ModalBody>
-            <ModalFooter>
-              <HStack spacing={3}>
-                <Button
-                  bg="white"
-                  color="black"
-                  borderColor="gray.300"
-                  borderWidth="1px"
-                  _hover={{ bg: "gray.100" }}
-                  onClick={confirmDeleteRoutineDay}
-                >
-                  Eliminar
-                </Button>
-                <Button
-                  bg="black"
-                  color="white"
-                  _hover={{ bg: "gray.800" }}
-                  _active={{ bg: "gray.900" }}
-                  onClick={() => setDeleteRoutineDayConfirmOpen(false)}
-                >
-                  Cancelar
-                </Button>
-              </HStack>
-            </ModalFooter>
           </ModalContent>
         </Modal>
         <Modal isOpen={createStudentModalOpen} onClose={() => setCreateStudentModalOpen(false)} isCentered>
-          <ModalOverlay />
-          <ModalContent maxW="700px">
-            <ModalHeader>Agregar alumno</ModalHeader>
-            <ModalBody maxH="70vh" overflowY="auto">
-              <Stack spacing={3}>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW="560px" borderRadius="12px" overflow="hidden">
+            <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
+              <HStack justify="space-between" align="flex-start">
+                <Stack spacing={1}>
+                  <HStack spacing={2}>
+                    <Box
+                      as="svg"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      boxSize="16px"
+                      fill="none"
+                      stroke="#f97316"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <line x1="19" x2="19" y1="8" y2="14" />
+                      <line x1="22" x2="16" y1="11" y2="11" />
+                    </Box>
+                    <Text fontWeight="700" color="gray.900">Nuevo Alumno</Text>
+                  </HStack>
+                  <Text fontSize="sm" color="gray.500">Ingresa los datos del nuevo estudiante de arquería.</Text>
+                </Stack>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => setCreateStudentModalOpen(false)}>
+                  ×
+                </Button>
+              </HStack>
+            </ModalHeader>
+            <ModalBody maxH="70vh" overflowY="auto" py={5}>
+              <Stack spacing={4}>
                 <FormControl>
-                  <FormLabel>Nombre completo</FormLabel>
-                  <Input value={studentFullName} onChange={(e) => setStudentFullName(e.target.value)} />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>DNI</FormLabel>
+                  <FormLabel color="gray.700" fontSize="sm">Nombre completo</FormLabel>
                   <Input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    value={studentDocumentNumber}
-                    onChange={(e) => setStudentDocumentNumber(e.target.value.replace(/\D+/g, ""))}
-                    onBeforeInput={handleBeforeInputInt}
-                    onPaste={handlePasteInt}
+                    value={studentFullName}
+                    onChange={(e) => setStudentFullName(e.target.value)}
+                    placeholder="Ej. Juan Pérez"
+                    borderColor="gray.300"
+                    borderRadius="8px"
+                    _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
                   />
                 </FormControl>
-                <FormControl>
-                  <FormLabel>Contacto</FormLabel>
-                  <Input value={studentContact} onChange={(e) => setStudentContact(e.target.value)} />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>Libras del arco</FormLabel>
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    step={0.5}
-                    value={studentBowPounds}
-                    onChange={(e) => setStudentBowPounds(normalizeFloat(e.target.value))}
-                    onKeyDown={(e) => blockInvalidKeys(e, true)}
-                    onBeforeInput={handleBeforeInputFloat}
-                    onPaste={handlePasteFloat}
-                  />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>Flechas disponibles</FormLabel>
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    min={0}
-                    step={1}
-                    value={studentArrowsAvailable}
-                    onChange={(e) => setStudentArrowsAvailable(normalizeInt(e.target.value))}
-                    onKeyDown={(e) => blockInvalidKeys(e, false)}
-                    onBeforeInput={handleBeforeInputInt}
-                    onPaste={handlePasteInt}
-                  />
-                </FormControl>
+                <SimpleGrid columns={2} spacing={3}>
+                  <FormControl>
+                    <FormLabel color="gray.700" fontSize="sm">DNI</FormLabel>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={studentDocumentNumber}
+                      onChange={(e) => setStudentDocumentNumber(e.target.value.replace(/\D+/g, ""))}
+                      onBeforeInput={handleBeforeInputInt}
+                      onPaste={handlePasteInt}
+                      placeholder="12345678"
+                      borderColor="gray.300"
+                      borderRadius="8px"
+                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel color="gray.700" fontSize="sm">Contacto</FormLabel>
+                    <Input
+                      value={studentContact}
+                      onChange={(e) => setStudentContact(e.target.value)}
+                      placeholder="correo@ejemplo.com"
+                      borderColor="gray.300"
+                      borderRadius="8px"
+                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                    />
+                  </FormControl>
+                </SimpleGrid>
+                <SimpleGrid columns={2} spacing={3}>
+                  <FormControl>
+                    <FormLabel color="gray.700" fontSize="sm">Libras del arco</FormLabel>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step={0.5}
+                      value={studentBowPounds}
+                      onChange={(e) => setStudentBowPounds(normalizeFloat(e.target.value))}
+                      onKeyDown={(e) => blockInvalidKeys(e, true)}
+                      onBeforeInput={handleBeforeInputFloat}
+                      onPaste={handlePasteFloat}
+                      placeholder="Ej. 24"
+                      borderColor="gray.300"
+                      borderRadius="8px"
+                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel color="gray.700" fontSize="sm">Flechas disponibles</FormLabel>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      min={0}
+                      step={1}
+                      value={studentArrowsAvailable}
+                      onChange={(e) => setStudentArrowsAvailable(normalizeInt(e.target.value))}
+                      onKeyDown={(e) => blockInvalidKeys(e, false)}
+                      onBeforeInput={handleBeforeInputInt}
+                      onPaste={handlePasteInt}
+                      placeholder="Ej. 6"
+                      borderColor="gray.300"
+                      borderRadius="8px"
+                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                    />
+                  </FormControl>
+                </SimpleGrid>
                 {createStudentError && (
                   <Alert status="error" borderRadius="md">
                     <AlertIcon />
@@ -3099,16 +3481,16 @@ function App() {
                 )}
               </Stack>
             </ModalBody>
-            <ModalFooter>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
               <HStack spacing={3}>
-                <Button variant="ghost" onClick={() => setCreateStudentModalOpen(false)}>
+                <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={() => setCreateStudentModalOpen(false)}>
                   Cancelar
                 </Button>
                 <Button
-                  bg="black"
+                  bg="#f97316"
                   color="white"
-                  _hover={{ bg: "gray.800" }}
-                  _active={{ bg: "gray.900" }}
+                  _hover={{ bg: "#ea580c" }}
+                  _active={{ bg: "#c2410c" }}
                   isLoading={createStudentLoading}
                   isDisabled={!studentFullName || !studentDocumentNumber}
                   onClick={handleCreateStudentSave}
@@ -3120,60 +3502,98 @@ function App() {
           </ModalContent>
         </Modal>
         <Modal isOpen={editStudentModalOpen} onClose={() => setEditStudentModalOpen(false)} isCentered>
-          <ModalOverlay />
-          <ModalContent maxW="700px">
-            <ModalHeader>Editar alumno</ModalHeader>
-            <ModalBody maxH="70vh" overflowY="auto">
-              <Stack spacing={3}>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW="560px" borderRadius="12px" overflow="hidden">
+            <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
+              <HStack justify="space-between" align="flex-start">
+                <Stack spacing={1}>
+                  <HStack spacing={2}>
+                    <Box color="#f97316" fontSize="16px">◎</Box>
+                    <Text fontWeight="700" color="gray.900">Editar Alumno</Text>
+                  </HStack>
+                  <Text fontSize="sm" color="gray.500">Actualiza los datos del estudiante.</Text>
+                </Stack>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => setEditStudentModalOpen(false)}>
+                  ×
+                </Button>
+              </HStack>
+            </ModalHeader>
+            <ModalBody maxH="70vh" overflowY="auto" py={5}>
+              <Stack spacing={4}>
                 <FormControl>
-                  <FormLabel>Nombre completo</FormLabel>
-                  <Input value={editStudentFullName} onChange={(e) => setEditStudentFullName(e.target.value)} />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>DNI</FormLabel>
+                  <FormLabel color="gray.700" fontSize="sm">Nombre completo</FormLabel>
                   <Input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    value={editStudentDocumentNumber}
-                    onChange={(e) => setEditStudentDocumentNumber(e.target.value.replace(/\D+/g, ""))}
-                    onBeforeInput={handleBeforeInputInt}
-                    onPaste={handlePasteInt}
+                    value={editStudentFullName}
+                    onChange={(e) => setEditStudentFullName(e.target.value)}
+                    borderColor="gray.300"
+                    borderRadius="8px"
+                    _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
                   />
                 </FormControl>
-                <FormControl>
-                  <FormLabel>Contacto</FormLabel>
-                  <Input value={editStudentContact} onChange={(e) => setEditStudentContact(e.target.value)} />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>Libras del arco</FormLabel>
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    step={0.5}
-                    value={editStudentBowPounds}
-                    onChange={(e) => setEditStudentBowPounds(normalizeFloat(e.target.value))}
-                    onKeyDown={(e) => blockInvalidKeys(e, true)}
-                    onBeforeInput={handleBeforeInputFloat}
-                    onPaste={handlePasteFloat}
-                  />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>Flechas disponibles</FormLabel>
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    min={0}
-                    step={1}
-                    value={editStudentArrowsAvailable}
-                    onChange={(e) => setEditStudentArrowsAvailable(normalizeInt(e.target.value))}
-                    onKeyDown={(e) => blockInvalidKeys(e, false)}
-                    onBeforeInput={handleBeforeInputInt}
-                    onPaste={handlePasteInt}
-                  />
-                </FormControl>
+                <SimpleGrid columns={2} spacing={3}>
+                  <FormControl>
+                    <FormLabel color="gray.700" fontSize="sm">DNI</FormLabel>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={editStudentDocumentNumber}
+                      onChange={(e) => setEditStudentDocumentNumber(e.target.value.replace(/\D+/g, ""))}
+                      onBeforeInput={handleBeforeInputInt}
+                      onPaste={handlePasteInt}
+                      borderColor="gray.300"
+                      borderRadius="8px"
+                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel color="gray.700" fontSize="sm">Contacto</FormLabel>
+                    <Input
+                      value={editStudentContact}
+                      onChange={(e) => setEditStudentContact(e.target.value)}
+                      borderColor="gray.300"
+                      borderRadius="8px"
+                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                    />
+                  </FormControl>
+                </SimpleGrid>
+                <SimpleGrid columns={2} spacing={3}>
+                  <FormControl>
+                    <FormLabel color="gray.700" fontSize="sm">Libras del arco</FormLabel>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step={0.5}
+                      value={editStudentBowPounds}
+                      onChange={(e) => setEditStudentBowPounds(normalizeFloat(e.target.value))}
+                      onKeyDown={(e) => blockInvalidKeys(e, true)}
+                      onBeforeInput={handleBeforeInputFloat}
+                      onPaste={handlePasteFloat}
+                      borderColor="gray.300"
+                      borderRadius="8px"
+                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel color="gray.700" fontSize="sm">Flechas disponibles</FormLabel>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      min={0}
+                      step={1}
+                      value={editStudentArrowsAvailable}
+                      onChange={(e) => setEditStudentArrowsAvailable(normalizeInt(e.target.value))}
+                      onKeyDown={(e) => blockInvalidKeys(e, false)}
+                      onBeforeInput={handleBeforeInputInt}
+                      onPaste={handlePasteInt}
+                      borderColor="gray.300"
+                      borderRadius="8px"
+                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                    />
+                  </FormControl>
+                </SimpleGrid>
                 {editStudentError && (
                   <Alert status="error" borderRadius="md">
                     <AlertIcon />
@@ -3182,16 +3602,16 @@ function App() {
                 )}
               </Stack>
             </ModalBody>
-            <ModalFooter>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
               <HStack spacing={3}>
-                <Button variant="ghost" onClick={() => setEditStudentModalOpen(false)}>
+                <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={() => setEditStudentModalOpen(false)}>
                   Cancelar
                 </Button>
                 <Button
-                  bg="black"
+                  bg="#f97316"
                   color="white"
-                  _hover={{ bg: "gray.800" }}
-                  _active={{ bg: "gray.900" }}
+                  _hover={{ bg: "#ea580c" }}
+                  _active={{ bg: "#c2410c" }}
                   isLoading={editStudentLoading}
                   isDisabled={!editStudentFullName || !editStudentDocumentNumber}
                   onClick={handleEditStudentSave}
@@ -3204,18 +3624,19 @@ function App() {
         </Modal>
         <Modal
           isOpen={adminAssignModalOpen}
-          onClose={() => {
-            setAdminAssignModalOpen(false);
-            setAdminAssignSearch("");
-            setAdminAssignSelectedStudentId(null);
-          }}
+          onClose={closeAdminAssignModal}
           isCentered
         >
-          <ModalOverlay />
-          <ModalContent maxW="760px">
-            <ModalHeader>Asignar rutina</ModalHeader>
-            <ModalBody>
-              <Stack spacing={3}>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW="620px" borderRadius="12px" overflow="hidden">
+            <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
+              <HStack justify="space-between">
+                <Text fontWeight="700" color="gray.900">Asignar rutina</Text>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={closeAdminAssignModal}>×</Button>
+              </HStack>
+            </ModalHeader>
+            <ModalBody py={4}>
+              <Stack spacing={4}>
                 <InputGroup>
                   <InputLeftElement pointerEvents="none" color="gray.500">
                     <SearchIcon boxSize={3.5} />
@@ -3224,32 +3645,34 @@ function App() {
                     value={adminAssignSearch}
                     onChange={(e) => setAdminAssignSearch(e.target.value)}
                     placeholder="Buscar alumno activo"
+                    borderRadius="8px"
+                    borderColor="gray.300"
                   />
                 </InputGroup>
-                <Stack spacing={2} maxH="50vh" overflowY="auto" pr={1}>
+                <Stack spacing={2} maxH="42vh" overflowY="auto" pr={1}>
                   {adminAssignableStudents.map((student) => {
                     const isSelected = adminAssignSelectedStudentId === student.id;
                     return (
                       <Box
                         key={student.id}
-                        p={3}
+                        p={3.5}
                         borderWidth="1px"
-                        borderColor={isSelected ? "black" : "gray.200"}
-                        bg={isSelected ? "gray.50" : "white"}
-                        borderRadius="md"
+                        borderColor={isSelected ? "#f97316" : "gray.200"}
+                        bg={isSelected ? "#fff7ed" : "white"}
+                        borderRadius="8px"
                         cursor="pointer"
-                        _hover={{ borderColor: "gray.500" }}
+                        _hover={{ borderColor: isSelected ? "#f97316" : "gray.400" }}
                         onClick={() => setAdminAssignSelectedStudentId(student.id)}
                       >
                         <HStack justify="space-between" align="center">
                           <Stack spacing={0}>
-                            <Text color="gray.900">{student.full_name}</Text>
+                            <Text color="gray.900" fontWeight="500">{student.full_name}</Text>
                             <Text color="gray.500" fontSize="xs">
                               DNI: {student.document_number}
                             </Text>
                           </Stack>
                           {isSelected && (
-                            <Badge colorScheme="green">Seleccionado</Badge>
+                            <Badge bg="#f97316" color="white" borderRadius="full" px={2} py={0.5}>✓</Badge>
                           )}
                         </HStack>
                       </Box>
@@ -3261,51 +3684,151 @@ function App() {
                 </Stack>
               </Stack>
             </ModalBody>
-            <ModalFooter>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
               <HStack spacing={3}>
                 <Button
-                  bg="black"
+                  bg="white"
+                  color="gray.700"
+                  borderColor="gray.300"
+                  borderWidth="1px"
+                  _hover={{ bg: "gray.100" }}
+                  onClick={closeAdminAssignModal}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  bg="#f97316"
                   color="white"
-                  _hover={{ bg: "gray.800" }}
-                  _active={{ bg: "gray.900" }}
+                  _hover={{ bg: "#ea580c" }}
+                  _active={{ bg: "#c2410c" }}
                   isDisabled={!adminAssignSelectedStudentId}
                   onClick={handleAdminAssignContinue}
                 >
                   Continuar
-                </Button>
-                <Button
-                  bg="white"
-                  color="black"
-                  borderColor="gray.300"
-                  borderWidth="1px"
-                  _hover={{ bg: "gray.100" }}
-                  onClick={() => {
-                    setAdminAssignModalOpen(false);
-                    setAdminAssignSearch("");
-                    setAdminAssignSelectedStudentId(null);
-                  }}
-                >
-                  Cancelar
                 </Button>
               </HStack>
             </ModalFooter>
           </ModalContent>
         </Modal>
         <Modal isOpen={assignRoutineModalOpen} onClose={closeAssignRoutineModal} isCentered>
-          <ModalOverlay />
-          <ModalContent maxW="760px">
-            <ModalHeader>Asignar rutina a {assignRoutineStudent?.full_name || "alumno"}</ModalHeader>
-            <ModalBody>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW="760px" borderRadius="12px" overflow="hidden">
+            <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
+              <HStack justify="space-between">
+                <Stack spacing={0}>
+                  <Text fontWeight="700" color="gray.900">
+                    Asignar rutina a{" "}
+                    <Text as="span" color={assignRoutineStep === "choice" ? "#f97316" : "gray.900"}>
+                      {assignRoutineStudent?.full_name || "alumno"}
+                    </Text>
+                  </Text>
+                  {assignRoutineStep === "choice" && <Text fontSize="sm" color="gray.500">Paso 2 de 4: Selecciona el método de asignación</Text>}
+                  {assignRoutineStep === "existing_list" && <Text fontSize="sm" color="gray.500">Selecciona una rutina existente de la lista para asignarla.</Text>}
+                  {assignRoutineStep === "existing_preview" && <Text fontSize="sm" color="gray.500">Paso 4: Configurar ejercicios y días</Text>}
+                  {assignRoutineStep === "existing_dates" && <Text fontSize="sm" color="gray.500">Paso 5: Seleccionar fechas de la rutina</Text>}
+                </Stack>
+                {assignRoutineStep === "existing_preview" || assignRoutineStep === "existing_dates" ? (
+                  <Button variant="ghost" size="sm" color="gray.500" _hover={{ bg: "gray.100", color: "gray.700" }} aria-label="Configuración">
+                    ⚙
+                  </Button>
+                ) : (
+                  <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={closeAssignRoutineModal}>×</Button>
+                )}
+              </HStack>
+            </ModalHeader>
+            <ModalBody py={5}>
               {assignRoutineStep === "choice" && (
-                <Stack spacing={4}>
-                  <Text color="gray.700">Crear una rutina temporal o asignar una rutina ya creada</Text>
-                  <HStack spacing={3}>
-                    <Button bg="black" color="white" _hover={{ bg: "gray.800" }} _active={{ bg: "gray.900" }} onClick={handleChooseCreateRoutineForStudent}>
-                      Crear rutina
-                    </Button>
-                    <Button variant="outline" borderColor="gray.300" onClick={handleChooseExistingRoutineList}>
-                      Asignar rutina ya creada
-                    </Button>
+                <Stack spacing={5}>
+                  <Text color="gray.700" textAlign="center">
+                    ¿Deseas crear una rutina temporal nueva o asignar una que ya tengas guardada en tu biblioteca?
+                  </Text>
+                  <HStack spacing={4} align="stretch">
+                    <Box
+                      flex="1"
+                      role="group"
+                      borderWidth="1px"
+                      borderColor="gray.300"
+                      bg="white"
+                      borderRadius="12px"
+                      p={5}
+                      cursor="pointer"
+                      _hover={{ borderColor: "#f97316", bg: "#fff7ed" }}
+                      onClick={handleChooseCreateRoutineForStudent}
+                    >
+                      <Stack spacing={3} align="center" textAlign="center">
+                        <Box
+                          w="44px"
+                          h="44px"
+                          borderRadius="full"
+                          bg="gray.100"
+                          display="flex"
+                          alignItems="center"
+                          justifyContent="center"
+                          color="gray.500"
+                          _groupHover={{ bg: "orange.100", color: "orange.500" }}
+                          >
+                          <Box
+                            as="svg"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            boxSize="18px"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="M8 12h8" />
+                            <path d="M12 8v8" />
+                          </Box>
+                        </Box>
+                        <Text fontWeight="700" color="gray.900">Crear rutina</Text>
+                        <Text fontSize="sm" color="gray.500">Diseña una rutina específica desde cero para este alumno.</Text>
+                      </Stack>
+                    </Box>
+                    <Box
+                      flex="1"
+                      role="group"
+                      borderWidth="1px"
+                      borderColor="gray.300"
+                      borderRadius="12px"
+                      p={5}
+                      cursor="pointer"
+                      _hover={{ borderColor: "#f97316", bg: "#fff7ed" }}
+                      onClick={handleChooseExistingRoutineList}
+                    >
+                      <Stack spacing={3} align="center" textAlign="center">
+                        <Box
+                          w="44px"
+                          h="44px"
+                          borderRadius="full"
+                          bg="gray.100"
+                          display="flex"
+                          alignItems="center"
+                          justifyContent="center"
+                          color="gray.500"
+                          _groupHover={{ bg: "orange.100", color: "orange.500" }}
+                        >
+                          <Box
+                            as="svg"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            boxSize="18px"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                          </Box>
+                        </Box>
+                        <Text fontWeight="700" color="gray.900">Asignar rutina ya creada</Text>
+                        <Text fontSize="sm" color="gray.500">Selecciona una rutina existente de tu biblioteca de plantillas.</Text>
+                      </Stack>
+                    </Box>
                   </HStack>
                 </Stack>
               )}
@@ -3314,16 +3837,18 @@ function App() {
                   {sortedRoutines.map((routine) => (
                     <Box
                       key={routine.id}
-                      p={3}
+                      p={3.5}
                       borderWidth="1px"
                       borderColor="gray.200"
-                      borderRadius="md"
+                      borderRadius="8px"
                       cursor="pointer"
                       _hover={{ borderColor: "gray.400" }}
                       onClick={() => handleSelectRoutineToAssign(routine)}
                     >
                       <HStack justify="space-between" align="center">
-                        <Text color="gray.900">{routine.name}</Text>
+                        <Stack spacing={0}>
+                          <Text color="gray.900" fontWeight="500">{routine.name}</Text>
+                        </Stack>
                         <Text color="gray.500" fontSize="sm">
                           Flechas totales: {getRoutineWeekArrows(routine)}
                         </Text>
@@ -3336,7 +3861,7 @@ function App() {
               {assignRoutineStep === "existing_preview" && selectedRoutineToAssign && (
                 <Stack
                   ref={assignRoutineSummaryListRef}
-                  spacing={3}
+                  spacing={4}
                   maxH={`${routineAssignSummaryListMaxH}px`}
                   overflowY="auto"
                   pr={1}
@@ -3344,8 +3869,8 @@ function App() {
                   sx={{ overscrollBehaviorY: "contain" }}
                 >
                   {routineAssignBuilderDays.map((day) => (
-                    <Box key={`assign-summary-${day.key}`} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={3}>
-                      <Text color="gray.800" fontWeight="medium">
+                    <Box key={`assign-summary-${day.key}`} borderWidth="1px" borderColor="gray.200" borderRadius="10px" p={4}>
+                      <Text color="gray.800" fontWeight="semibold" mb={2}>
                         {day.label}
                       </Text>
                       <Stack spacing={1} mt={2}>
@@ -3406,12 +3931,12 @@ function App() {
                           <Text fontSize="sm" color="gray.500">Sin ejercicios</Text>
                         )}
                       </Stack>
-                      <HStack mt={3} justify="space-between" align="center">
+                      <HStack mt={4} justify="space-between" align="center">
                         <Button
                           size="sm"
-                          variant="outline"
-                          borderColor="gray.300"
-                          borderRadius="lg"
+                          variant="ghost"
+                          color="#f97316"
+                          _hover={{ bg: "orange.50" }}
                           onClick={() => openAddExerciseForDay(day.key)}
                           leftIcon={
                             <Box as="svg" viewBox="0 0 24 24" boxSize="16px" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -3425,11 +3950,9 @@ function App() {
                         {routineAssignDayCount > 1 && (
                           <Button
                             size="sm"
-                            variant="outline"
-                            borderColor="gray.300"
-                            borderRadius="lg"
-                            color="black"
-                            _hover={{ bg: "red.700", borderColor: "red.800", color: "white" }}
+                            variant="ghost"
+                            color="red.500"
+                            _hover={{ bg: "red.50", color: "red.600" }}
                             onClick={() => requestDeleteAssignRoutineDay(day.dayNumber)}
                             leftIcon={
                               <Box as="svg" viewBox="0 0 24 24" boxSize="16px" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -3457,6 +3980,73 @@ function App() {
                   </HStack>
                 </Stack>
               )}
+              {assignRoutineStep === "existing_dates" && selectedRoutineToAssign && (
+                <Box borderWidth="1px" borderColor="gray.200" borderRadius="10px" p={4}>
+                  <Stack spacing={4}>
+                    <Text fontWeight="600" color="gray.800">Selecciona la semana de la rutina</Text>
+                    <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+                      <FormControl>
+                        <FormLabel>Inicio de rutina</FormLabel>
+                        <Box position="relative" maxW="240px">
+                          <Input type="text" value={formatDateEs(assignmentStartDate)} pr="44px" isReadOnly />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            position="absolute"
+                            right="6px"
+                            top="50%"
+                            transform="translateY(-50%)"
+                            minW="30px"
+                            h="30px"
+                            p={0}
+                            aria-label="Abrir calendario"
+                            onClick={() => {
+                              const picker = assignmentStartDatePickerRef.current;
+                              if (!picker) return;
+                              if ("showPicker" in picker) {
+                                (picker as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+                              } else {
+                                picker.click();
+                              }
+                            }}
+                          >
+                            <Box
+                              as="svg"
+                              viewBox="0 0 24 24"
+                              boxSize="16px"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <rect width="18" height="18" x="3" y="4" rx="2" />
+                              <path d="M16 2v4" />
+                              <path d="M8 2v4" />
+                              <path d="M3 10h18" />
+                            </Box>
+                          </Button>
+                          <Input
+                            ref={assignmentStartDatePickerRef}
+                            type="date"
+                            value={assignmentStartDate}
+                            onChange={(e) => setAssignmentStartDate(e.target.value || getTodayIsoLocal())}
+                            position="absolute"
+                            inset={0}
+                            opacity={0}
+                            pointerEvents="none"
+                            aria-label="Seleccionar inicio de rutina"
+                          />
+                        </Box>
+                      </FormControl>
+                      <FormControl>
+                        <FormLabel>Fin de rutina</FormLabel>
+                        <Input type="text" value={formatDateEs(assignmentEndDate)} maxW="240px" isReadOnly />
+                      </FormControl>
+                    </SimpleGrid>
+                  </Stack>
+                </Box>
+              )}
               {assignRoutineError && (
                 <Alert status="error" borderRadius="md" mt={3}>
                   <AlertIcon />
@@ -3464,8 +4054,16 @@ function App() {
                 </Alert>
               )}
             </ModalBody>
-            <ModalFooter>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
               <HStack spacing={3}>
+                {assignRoutineStep === "choice" && (
+                  <Button variant="outline" borderColor="gray.300" onClick={() => {
+                    setAssignRoutineModalOpen(false);
+                    openAdminAssignModal();
+                  }}>
+                    Volver
+                  </Button>
+                )}
                 {assignRoutineStep === "existing_list" && (
                   <Button variant="outline" borderColor="gray.300" onClick={() => setAssignRoutineStep("choice")}>
                     Volver
@@ -3477,10 +4075,26 @@ function App() {
                       Volver
                     </Button>
                     <Button
-                      bg="black"
+                      bg="#f97316"
                       color="white"
-                      _hover={{ bg: "gray.800" }}
-                      _active={{ bg: "gray.900" }}
+                      _hover={{ bg: "#ea580c" }}
+                      _active={{ bg: "#c2410c" }}
+                      onClick={() => setAssignRoutineStep("existing_dates")}
+                    >
+                      Siguiente
+                    </Button>
+                  </>
+                )}
+                {assignRoutineStep === "existing_dates" && (
+                  <>
+                    <Button variant="outline" borderColor="gray.300" onClick={() => setAssignRoutineStep("existing_preview")}>
+                      Volver
+                    </Button>
+                    <Button
+                      bg="#f97316"
+                      color="white"
+                      _hover={{ bg: "#ea580c" }}
+                      _active={{ bg: "#c2410c" }}
                       isLoading={assignRoutineLoading}
                       onClick={handleAssignExistingRoutine}
                     >
@@ -3562,10 +4176,17 @@ function App() {
           </ModalContent>
         </Modal>
         <Modal isOpen={addExerciseDayModalOpen} onClose={() => setAddExerciseDayModalOpen(false)} isCentered>
-          <ModalOverlay />
-          <ModalContent maxW="700px">
-            <ModalHeader>Agregar ejercicio al día</ModalHeader>
-            <ModalBody>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW="620px" borderRadius="12px" overflow="hidden">
+            <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
+              <HStack justify="space-between">
+                <Text fontWeight="700" color="gray.900">Agregar ejercicio al día</Text>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => setAddExerciseDayModalOpen(false)}>
+                  ×
+                </Button>
+              </HStack>
+            </ModalHeader>
+            <ModalBody py={4}>
               <Stack spacing={3}>
                 <InputGroup>
                   <InputLeftElement pointerEvents="none">
@@ -3575,12 +4196,14 @@ function App() {
                     placeholder="Buscar ejercicio..."
                     value={addExerciseSearch}
                     onChange={(e) => setAddExerciseSearch(e.target.value)}
+                    borderColor="gray.300"
+                    borderRadius="8px"
                   />
                 </InputGroup>
                 <Stack
                   ref={addExerciseListRef}
                   spacing={2}
-                  maxH="45vh"
+                  maxH="50vh"
                   overflowY="auto"
                   pr={1}
                   onWheel={handleAddExerciseListWheel}
@@ -3601,9 +4224,9 @@ function App() {
                       return !(routineAssignExercisesByDay[addExerciseTargetDayKey] || []).includes(exercise.id);
                     })
                     .map((exercise) => (
-                      <HStack key={`add-day-ex-${exercise.id}`} justify="space-between" borderWidth="1px" borderColor="gray.200" borderRadius="md" p={2}>
+                      <HStack key={`add-day-ex-${exercise.id}`} justify="space-between" borderWidth="1px" borderColor="gray.200" borderRadius="8px" p={3}>
                         <Stack spacing={0}>
-                          <Text fontSize="sm" color="gray.800">{exercise.name}</Text>
+                          <Text fontSize="sm" color="gray.800" fontWeight="500">{exercise.name}</Text>
                           <Text fontSize="xs" color="gray.500">
                             Flechas: {exercise.arrows_count} | Distancia: {Number(exercise.distance_m)} m
                           </Text>
@@ -3612,6 +4235,9 @@ function App() {
                           size="sm"
                           variant="outline"
                           borderColor="gray.300"
+                          borderRadius="8px"
+                          bg="white"
+                          _hover={{ bg: "gray.50", borderColor: "gray.400" }}
                           onClick={() => addExerciseTargetDayKey && addTemporaryExerciseToDay(addExerciseTargetDayKey, exercise.id)}
                         >
                           Agregar
@@ -3621,45 +4247,70 @@ function App() {
                 </Stack>
               </Stack>
             </ModalBody>
-            <ModalFooter>
-              <Button variant="ghost" onClick={() => setAddExerciseDayModalOpen(false)}>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
+              <Button variant="outline" borderColor="gray.300" bg="white" _hover={{ bg: "gray.50" }} onClick={() => setAddExerciseDayModalOpen(false)}>
                 Cancelar
               </Button>
             </ModalFooter>
           </ModalContent>
         </Modal>
         <Modal isOpen={deleteAssignDayConfirmOpen} onClose={() => setDeleteAssignDayConfirmOpen(false)} isCentered>
-          <ModalOverlay />
-          <ModalContent maxW="420px">
-            <ModalHeader>¿Eliminar día?</ModalHeader>
-            <ModalBody>
-              <Text color="gray.700">
-                Se eliminará {deleteAssignDayTargetNumber ? `Día ${deleteAssignDayTargetNumber}` : "este día"} de la asignación temporal.
-              </Text>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW="420px" borderRadius="14px" overflow="hidden">
+            <ModalBody py={8}>
+              <Stack spacing={4} align="center" textAlign="center">
+                <Box w="56px" h="56px" borderRadius="full" bg="#fee2e2" display="flex" alignItems="center" justifyContent="center">
+                  <Box
+                    as="svg"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    boxSize="20px"
+                    fill="none"
+                    stroke="#ef4444"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </Box>
+                </Box>
+                <Heading size="md" color="gray.900">
+                  ¿Eliminar día?
+                </Heading>
+                <Text color="gray.500" fontSize="sm" maxW="300px">
+                  Se eliminará{" "}
+                  <Box as="span" fontWeight="600" color="gray.700">
+                    {deleteAssignDayTargetNumber ? `Día ${deleteAssignDayTargetNumber}` : "este día"}
+                  </Box>{" "}
+                  de la asignación temporal. Esta acción no se puede deshacer.
+                </Text>
+                <HStack spacing={3} pt={2}>
+                  <Button
+                    bg="white"
+                    color="#ef4444"
+                    borderColor="#fecaca"
+                    borderWidth="1px"
+                    _hover={{ bg: "#fef2f2" }}
+                    onClick={confirmDeleteAssignRoutineDay}
+                  >
+                    Eliminar
+                  </Button>
+                  <Button
+                    bg="#f97316"
+                    color="white"
+                    _hover={{ bg: "#ea580c" }}
+                    _active={{ bg: "#c2410c" }}
+                    onClick={() => setDeleteAssignDayConfirmOpen(false)}
+                  >
+                    Cancelar
+                  </Button>
+                </HStack>
+              </Stack>
             </ModalBody>
-            <ModalFooter>
-              <HStack spacing={3}>
-                <Button
-                  bg="white"
-                  color="black"
-                  borderColor="gray.300"
-                  borderWidth="1px"
-                  _hover={{ bg: "gray.100" }}
-                  onClick={confirmDeleteAssignRoutineDay}
-                >
-                  Eliminar
-                </Button>
-                <Button
-                  bg="black"
-                  color="white"
-                  _hover={{ bg: "gray.800" }}
-                  _active={{ bg: "gray.900" }}
-                  onClick={() => setDeleteAssignDayConfirmOpen(false)}
-                >
-                  Cancelar
-                </Button>
-              </HStack>
-            </ModalFooter>
           </ModalContent>
         </Modal>
         <Modal isOpen={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} isCentered>
@@ -3703,83 +4354,129 @@ function App() {
           </ModalContent>
         </Modal>
         <Modal isOpen={deleteRoutineModalOpen} onClose={() => setDeleteRoutineModalOpen(false)} isCentered>
-          <ModalOverlay />
-          <ModalContent maxW="420px">
-            <ModalHeader>¿Eliminar rutina?</ModalHeader>
-            <ModalBody>
-              {deleteRoutineError && (
-                <Alert status="error" borderRadius="md" mb={3}>
-                  <AlertIcon />
-                  {deleteRoutineError}
-                </Alert>
-              )}
-              <Text color="gray.700">Esta acción eliminará la rutina seleccionada.</Text>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW="420px" borderRadius="14px" overflow="hidden">
+            <ModalBody py={8}>
+              <Stack spacing={4} align="center" textAlign="center">
+                <Box w="56px" h="56px" borderRadius="full" bg="#fee2e2" display="flex" alignItems="center" justifyContent="center">
+                  <Box
+                    as="svg"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    boxSize="20px"
+                    fill="none"
+                    stroke="#ef4444"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </Box>
+                </Box>
+                <Heading size="md" color="gray.900">
+                  ¿Eliminar rutina?
+                </Heading>
+                <Text color="gray.500" fontSize="sm" maxW="300px">
+                  Esta acción eliminará la rutina seleccionada. Esta acción no se puede deshacer.
+                </Text>
+                {deleteRoutineError && (
+                  <Alert status="error" borderRadius="md" w="100%">
+                    <AlertIcon />
+                    {deleteRoutineError}
+                  </Alert>
+                )}
+                <HStack spacing={3} pt={1}>
+                  <Button
+                    bg="white"
+                    color="#ef4444"
+                    borderColor="#fecaca"
+                    borderWidth="1px"
+                    _hover={{ bg: "#fef2f2" }}
+                    onClick={handleDeleteRoutineConfirm}
+                    isLoading={deleteRoutineLoading}
+                  >
+                    Eliminar
+                  </Button>
+                  <Button
+                    bg="#f97316"
+                    color="white"
+                    _hover={{ bg: "#ea580c" }}
+                    _active={{ bg: "#c2410c" }}
+                    onClick={() => setDeleteRoutineModalOpen(false)}
+                    isDisabled={deleteRoutineLoading}
+                  >
+                    Cancelar
+                  </Button>
+                </HStack>
+              </Stack>
             </ModalBody>
-            <ModalFooter>
-              <HStack spacing={3}>
-                <Button
-                  bg="white"
-                  color="black"
-                  borderColor="gray.300"
-                  borderWidth="1px"
-                  _hover={{ bg: "gray.100" }}
-                  onClick={handleDeleteRoutineConfirm}
-                  isLoading={deleteRoutineLoading}
-                >
-                  Eliminar
-                </Button>
-                <Button
-                  bg="black"
-                  color="white"
-                  _hover={{ bg: "gray.800" }}
-                  _active={{ bg: "gray.900" }}
-                  onClick={() => setDeleteRoutineModalOpen(false)}
-                  isDisabled={deleteRoutineLoading}
-                >
-                  Cancelar
-                </Button>
-              </HStack>
-            </ModalFooter>
           </ModalContent>
         </Modal>
         <Modal isOpen={deleteAssignedRoutineModalOpen} onClose={() => setDeleteAssignedRoutineModalOpen(false)} isCentered>
-          <ModalOverlay />
-          <ModalContent maxW="420px">
-            <ModalHeader>¿Eliminar rutina asignada?</ModalHeader>
-            <ModalBody>
-              {deleteAssignedRoutineError && (
-                <Alert status="error" borderRadius="md" mb={3}>
-                  <AlertIcon />
-                  {deleteAssignedRoutineError}
-                </Alert>
-              )}
-              <Text color="gray.700">Se eliminará la rutina activa asignada al alumno.</Text>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW="420px" borderRadius="14px" overflow="hidden">
+            <ModalBody py={8}>
+              <Stack spacing={4} align="center" textAlign="center">
+                <Box w="56px" h="56px" borderRadius="full" bg="#fee2e2" display="flex" alignItems="center" justifyContent="center">
+                  <Box
+                    as="svg"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    boxSize="20px"
+                    fill="none"
+                    stroke="#ef4444"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </Box>
+                </Box>
+                <Heading size="md" color="gray.900">
+                  ¿Eliminar rutina asignada?
+                </Heading>
+                <Text color="gray.500" fontSize="sm" maxW="300px">
+                  Se eliminará la rutina activa asignada al alumno. Esta acción no se puede deshacer.
+                </Text>
+                {deleteAssignedRoutineError && (
+                  <Alert status="error" borderRadius="md" w="100%">
+                    <AlertIcon />
+                    {deleteAssignedRoutineError}
+                  </Alert>
+                )}
+                <HStack spacing={3} pt={1}>
+                  <Button
+                    bg="white"
+                    color="#ef4444"
+                    borderColor="#fecaca"
+                    borderWidth="1px"
+                    _hover={{ bg: "#fef2f2" }}
+                    onClick={handleDeleteAssignedRoutineConfirm}
+                    isLoading={deleteAssignedRoutineLoading}
+                  >
+                    Eliminar
+                  </Button>
+                  <Button
+                    bg="#f97316"
+                    color="white"
+                    _hover={{ bg: "#ea580c" }}
+                    _active={{ bg: "#c2410c" }}
+                    onClick={() => setDeleteAssignedRoutineModalOpen(false)}
+                    isDisabled={deleteAssignedRoutineLoading}
+                  >
+                    Cancelar
+                  </Button>
+                </HStack>
+              </Stack>
             </ModalBody>
-            <ModalFooter>
-              <HStack spacing={3}>
-                <Button
-                  bg="white"
-                  color="black"
-                  borderColor="gray.300"
-                  borderWidth="1px"
-                  _hover={{ bg: "gray.100" }}
-                  onClick={handleDeleteAssignedRoutineConfirm}
-                  isLoading={deleteAssignedRoutineLoading}
-                >
-                  Eliminar
-                </Button>
-                <Button
-                  bg="black"
-                  color="white"
-                  _hover={{ bg: "gray.800" }}
-                  _active={{ bg: "gray.900" }}
-                  onClick={() => setDeleteAssignedRoutineModalOpen(false)}
-                  isDisabled={deleteAssignedRoutineLoading}
-                >
-                  Cancelar
-                </Button>
-              </HStack>
-            </ModalFooter>
           </ModalContent>
         </Modal>
         <Modal isOpen={replaceAssignModalOpen} onClose={() => setReplaceAssignModalOpen(false)} isCentered>
@@ -3874,38 +4571,68 @@ function App() {
           </ModalContent>
         </Modal>
         <Modal isOpen={deactivateModalOpen} onClose={() => setDeactivateModalOpen(false)} isCentered>
-          <ModalOverlay />
-          <ModalContent maxW="420px">
-            <ModalHeader>¿Dar de baja alumno?</ModalHeader>
-            <ModalBody>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW="460px" borderRadius="12px" overflow="hidden">
+            <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
+              <HStack justify="space-between" align="center">
+                <HStack spacing={3}>
+                  <Box w="28px" h="28px" borderRadius="full" bg="#fee2e2" display="flex" alignItems="center" justifyContent="center">
+                    <Box
+                      as="svg"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      boxSize="18px"
+                      fill="none"
+                      stroke="#ef4444"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+                      <path d="M12 9v4" />
+                      <path d="M12 17h.01" />
+                    </Box>
+                  </Box>
+                  <Text fontWeight="700" color="gray.900">¿Dar de baja alumno?</Text>
+                </HStack>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => setDeactivateModalOpen(false)}>
+                  ×
+                </Button>
+              </HStack>
+            </ModalHeader>
+            <ModalBody py={5}>
               {deactivateError && (
                 <Alert status="error" borderRadius="md" mb={3}>
                   <AlertIcon />
                   {deactivateError}
                 </Alert>
               )}
-              <Text color="gray.700">
-                Se dará de baja a {deactivateStudent?.full_name || "este alumno"}.
+              <Text color="gray.600">
+                Se dará de baja a{" "}
+                <Box as="span" fontWeight="600" color="gray.800">
+                  {deactivateStudent?.full_name || "este alumno"}
+                </Box>
+                . Esta acción no se puede deshacer.
               </Text>
             </ModalBody>
-            <ModalFooter>
-              <HStack spacing={3}>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
+              <HStack spacing={3} w="full" justify="flex-end">
                 <Button
                   bg="white"
-                  color="black"
-                  borderColor="gray.300"
+                  color="#ef4444"
+                  borderColor="#fecaca"
                   borderWidth="1px"
-                  _hover={{ bg: "gray.100" }}
+                  _hover={{ bg: "#fef2f2" }}
                   onClick={handleDeactivateConfirm}
                   isLoading={deactivateLoading}
                 >
                   Dar de baja
                 </Button>
                 <Button
-                  bg="black"
+                  bg="#f97316"
                   color="white"
-                  _hover={{ bg: "gray.800" }}
-                  _active={{ bg: "gray.900" }}
+                  _hover={{ bg: "#ea580c" }}
+                  _active={{ bg: "#c2410c" }}
                   onClick={() => setDeactivateModalOpen(false)}
                   isDisabled={deactivateLoading}
                 >
@@ -3916,38 +4643,68 @@ function App() {
           </ModalContent>
         </Modal>
         <Modal isOpen={activateModalOpen} onClose={() => setActivateModalOpen(false)} isCentered>
-          <ModalOverlay />
-          <ModalContent maxW="420px">
-            <ModalHeader>¿Dar de alta alumno?</ModalHeader>
-            <ModalBody>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW="460px" borderRadius="12px" overflow="hidden">
+            <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
+              <HStack justify="space-between" align="center">
+                <HStack spacing={3}>
+                  <Box w="28px" h="28px" borderRadius="full" bg="#dcfce7" display="flex" alignItems="center" justifyContent="center">
+                    <Box
+                      as="svg"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      boxSize="18px"
+                      fill="none"
+                      stroke="#16a34a"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="m16 11 2 2 4-4" />
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                    </Box>
+                  </Box>
+                  <Text fontWeight="700" color="gray.900">¿Dar de alta alumno?</Text>
+                </HStack>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => setActivateModalOpen(false)}>
+                  ×
+                </Button>
+              </HStack>
+            </ModalHeader>
+            <ModalBody py={5}>
               {activateError && (
                 <Alert status="error" borderRadius="md" mb={3}>
                   <AlertIcon />
                   {activateError}
                 </Alert>
               )}
-              <Text color="gray.700">
-                Se dará de alta a {activateStudent?.full_name || "este alumno"}.
+              <Text color="gray.600">
+                Se dará de alta a{" "}
+                <Box as="span" fontWeight="600" color="gray.800">
+                  {activateStudent?.full_name || "este alumno"}
+                </Box>
+                .
               </Text>
             </ModalBody>
-            <ModalFooter>
-              <HStack spacing={3}>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
+              <HStack spacing={3} w="full" justify="flex-end">
                 <Button
                   bg="white"
-                  color="black"
-                  borderColor="gray.300"
+                  color="#16a34a"
+                  borderColor="#86efac"
                   borderWidth="1px"
-                  _hover={{ bg: "gray.100" }}
+                  _hover={{ bg: "#f0fdf4" }}
                   onClick={handleActivateConfirm}
                   isLoading={activateLoading}
                 >
                   Dar de alta
                 </Button>
                 <Button
-                  bg="black"
+                  bg="#f97316"
                   color="white"
-                  _hover={{ bg: "gray.800" }}
-                  _active={{ bg: "gray.900" }}
+                  _hover={{ bg: "#ea580c" }}
+                  _active={{ bg: "#c2410c" }}
                   onClick={() => setActivateModalOpen(false)}
                   isDisabled={activateLoading}
                 >

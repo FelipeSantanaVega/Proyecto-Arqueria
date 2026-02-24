@@ -1,0 +1,34 @@
+# Secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc.*
+
+# Node / Frontend
+node_modules/
+dist/
+dist-ssr/
+
+# Temporary / local artifacts
+_tmp_*
+*.tmp
+tmp_docx_extract/
+imports/
+frontend/stitch_export/
+frontend/stitch_export_fixed/
+backend/4.1.2
+backend/tmp_fix.py
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
