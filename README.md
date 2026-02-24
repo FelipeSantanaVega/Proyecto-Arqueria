@@ -1,115 +1,95 @@
-# Proyecto Arqueria
+# Proyecto Arquería
 
-Aplicación web para gestión de entrenamientos de tiro con arco.
-
-Incluye:
-- Gestión de ejercicios
-- Gestión de alumnos
-- Creación y edición de rutinas semanales
-- Asignación de rutinas a alumnos
-- Panel de administración de rutinas activas
+Aplicación web para gestionar entrenamientos de tiro con arco: ejercicios, alumnos, rutinas, asignaciones activas y exportación de rutina a PDF.
 
 ## Stack
-
-- Backend: FastAPI (Python, Poetry)
-- Frontend: React + Chakra UI (Vite, pnpm)
-- Base de datos: MariaDB (local con XAMPP)
+- Backend: FastAPI + SQLAlchemy + Poetry
+- Frontend: React + Vite + TypeScript + Chakra UI + pnpm
+- Base de datos: MariaDB (actualmente local, compatible con migración a hosting)
 - Auth: JWT
 
-## Estructura del repo
-
-- `backend`: API FastAPI, modelos, routers y seguridad
-- `frontend`: aplicación React
-- `db`: esquema SQL y migraciones
+## Estructura
+- `backend`: API, modelos, seguridad, generación de PDF
+- `frontend`: interfaz web
+- `db`: schema SQL y migraciones
 
 ## Requisitos
-
 - Python 3.11+
 - Poetry
 - Node.js 18+ (recomendado 20+)
 - pnpm
-- MariaDB (XAMPP u otra instalación local)
+- MariaDB
 
 ## Variables de entorno
-
-- Base del proyecto: `.env.example`
-- Frontend: `frontend/.env.example`
-
-Crear tus archivos:
-- `.env`
-- `frontend/.env`
-
-No subir credenciales reales al repositorio.
+- Raíz: `.env.example` -> `.env`
+- Frontend: `frontend/.env.example` -> `frontend/.env`
 
 ## Base de datos
-
-1. Crear la DB y tablas:
+Ejecutar:
 ```sql
 SOURCE db/schema.sql;
 ```
 
-2. (Opcional) aplicar hardening/migración:
+Opcional (hardening):
 ```sql
 SOURCE db/migrations/2026-02-13-db-hardening.sql;
 ```
 
-## Backend (FastAPI)
-
+## Backend
 Desde `backend/`:
 
-1. Instalar dependencias:
 ```bash
 poetry install
-```
-
-2. Levantar servidor:
-```bash
 poetry run uvicorn app.main:app --reload --port 8000
 ```
 
-3. Documentación:
-- Swagger UI: `http://127.0.0.1:8000/docs`
+Swagger:
+- `http://127.0.0.1:8000/docs`
 
-## Frontend (React)
-
+## Frontend
 Desde `frontend/`:
 
-1. Instalar dependencias:
 ```bash
 pnpm install
-```
-
-2. Levantar app:
-```bash
 pnpm dev
 ```
 
-3. URL local:
+App:
 - `http://localhost:5173`
 
-## Flujo funcional actual
-
-- Login con JWT
-- Persistencia de sesión en frontend
-- Roles soportados: `admin`, `professor`, `student`
-- CRUD de ejercicios
-- CRUD de alumnos + activar/desactivar
-- Rutinas semanales:
-  - crear
-  - editar
-  - eliminar
-  - visualización por día con contador de flechas por día y total semanal
+## Funcionalidades actuales
+- Login JWT con persistencia de sesión.
+- Panel profesor con secciones:
+  - Administrar rutinas activas
+  - Rutinas (plantillas)
+  - Ejercicios
+  - Alumnos
+- Ejercicios:
+  - crear, editar, eliminar
+  - búsqueda y tarjetas desplegables
+- Alumnos:
+  - crear, editar, activar/desactivar
+  - clasificación en activos/inactivos
+  - asignación de rutina solo para alumnos activos
+- Rutinas (plantillas):
+  - crear, editar, eliminar
+  - flujo por días numerados (`Día 1...Día 7`)
+  - agregar/quitar días y ejercicios
 - Asignaciones:
   - asignar rutina existente
-  - crear y asignar rutina
-  - eliminar rutina activa asignada
-  - restricción de 1 rutina activa por alumno por semana
-- Dashboard:
-  - estado API
-  - listado de rutinas activas asignadas a alumnos
+  - crear rutina temporal para un alumno
+  - edición temporal de ejercicios durante asignación
+  - selección de fecha de inicio con calendario y fin automático semanal
+  - una rutina activa por alumno por semana
+- Rutinas activas:
+  - listado por alumno
+  - eliminación de asignación
+  - exportación PDF
+- PDF:
+  - exporta la rutina activa con datos efectivos (incluyendo overrides temporales)
+  - formato de nombre: `PLAN SEMANAL [Alumno] [DD]-[MM] a [DD]-[MM].pdf`
 
 ## Endpoints principales
-
 - Auth:
   - `POST /auth/login`
 - Health:
@@ -132,9 +112,10 @@ pnpm dev
 - Assignments:
   - `GET /assignments`
   - `POST /assignments`
+  - `PATCH /assignments/{id}/status`
   - `DELETE /assignments/{id}`
+  - `GET /assignments/{id}/pdf`
 
 ## Notas
-
-- Para producción, configurar CORS, secretos JWT y credenciales seguras.
-- Si `poetry` o `pnpm` no están en PATH, usar la ruta completa del ejecutable.
+- Configurar secretos y credenciales seguras para producción.
+- Si `poetry` o `pnpm` no están en PATH, usar ruta completa del ejecutable.
