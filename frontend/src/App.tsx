@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Alert,
   AlertIcon,
@@ -6,7 +6,6 @@ import {
   Box,
   Button,
   Checkbox,
-  Collapse,
   Container,
   Divider,
   FormControl,
@@ -35,12 +34,16 @@ import {
 } from "@chakra-ui/react";
 import { CheckCircleIcon, SearchIcon, WarningIcon } from "@chakra-ui/icons";
 import { keyframes } from "@emotion/react";
+import { useLocation, useNavigate } from "react-router-dom";
 import bowIconUrl from "./assets/bow.svg";
-import archeryImg from "./assets/Arqueros Andinos logo upscaled.png";
+import archeryImg from "./assets/arqueros-logo-240.webp";
 import userPlusIconUrl from "./assets/user-plus.svg";
 import editIconUrl from "./assets/edit.svg";
 import notebookTabsIconUrl from "./assets/notebook-tabs.svg";
 import { apiFetch, API_BASE } from "./api";
+import { AppDataProvider } from "./context/AppDataContext";
+import { ProfessorListsProvider } from "./context/ProfessorListsContext";
+import { useAppDataController } from "./context/useAppDataController";
 
 const routineDaySlide = keyframes`
   from {
@@ -64,10 +67,53 @@ const routineStepSlide = keyframes`
   }
 `;
 
-type Health = {
-  status: string;
-  env: string;
+type AppView = "dashboard" | "login" | "professor";
+type ProfSection = "administrar_rutinas" | "perfil" | "rutina" | "ejercicio" | "alumno";
+
+const SECTION_TO_PATH: Record<ProfSection, string> = {
+  administrar_rutinas: "administrar-rutinas",
+  rutina: "rutinas",
+  ejercicio: "ejercicios",
+  alumno: "alumnos",
+  perfil: "perfil",
 };
+
+const PATH_TO_SECTION = Object.fromEntries(
+  Object.entries(SECTION_TO_PATH).map(([section, path]) => [path, section]),
+) as Record<string, ProfSection>;
+
+function getSectionFromPath(pathname: string): ProfSection {
+  if (!pathname.startsWith("/profesor")) return "administrar_rutinas";
+  const sectionPath = pathname.split("/")[2];
+  if (!sectionPath) return "administrar_rutinas";
+  return PATH_TO_SECTION[sectionPath] ?? "administrar_rutinas";
+}
+
+function getViewFromPath(pathname: string, hasToken: boolean): AppView {
+  if (pathname.startsWith("/login")) return "login";
+  if (pathname.startsWith("/dashboard")) return hasToken ? "dashboard" : "login";
+  if (pathname.startsWith("/profesor")) return hasToken ? "professor" : "login";
+  return hasToken ? "professor" : "login";
+}
+
+function getPathForView(view: AppView, section: ProfSection): string {
+  if (view === "login") return "/login";
+  if (view === "dashboard") return "/dashboard";
+  return `/profesor/${SECTION_TO_PATH[section]}`;
+}
+
+function getPathForSection(section: ProfSection): string {
+  return `/profesor/${SECTION_TO_PATH[section]}`;
+}
+
+const AdminRoutinesSection = lazy(() => import("./sections/AdminRoutinesSection"));
+const RoutinesSection = lazy(() => import("./sections/RoutinesSection"));
+const ExercisesSection = lazy(() => import("./sections/ExercisesSection"));
+const StudentsSection = lazy(() => import("./sections/StudentsSection"));
+const ProfileSection = lazy(() => import("./sections/ProfileSection"));
+
+const ACTION_ICON_BUTTON_SIZE = { base: "xs", xl: "sm", "2xl": "md" } as const;
+const ACTION_ICON_SIZE = "15px";
 
 type Exercise = {
   id: number;
@@ -174,14 +220,15 @@ function getStoredToken(): string | null {
 }
 
 function App() {
-  const [view, setView] = useState<"dashboard" | "login" | "professor">(() =>
-    getStoredToken() ? "professor" : "login",
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [view, setView] = useState<AppView>(() =>
+    getViewFromPath(window.location.pathname, Boolean(getStoredToken())),
   );
-  const [profSection, setProfSection] = useState<"administrar_rutinas" | "perfil" | "rutina" | "ejercicio" | "alumno">("administrar_rutinas");
+  const [profSection, setProfSection] = useState<ProfSection>(() => getSectionFromPath(window.location.pathname));
   const [expandedExercise, setExpandedExercise] = useState<number | null>(null);
   const [expandedStudent, setExpandedStudent] = useState<number | null>(null);
   const [expandedRoutine, setExpandedRoutine] = useState<number | null>(null);
-  const [expandedActiveAssignment, setExpandedActiveAssignment] = useState<number | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editExercise, setEditExercise] = useState<Exercise | null>(null);
   const [editName, setEditName] = useState("");
@@ -192,7 +239,7 @@ function App() {
   const [editError, setEditError] = useState<string | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createRoutineModalOpen, setCreateRoutineModalOpen] = useState(false);
-  const [routineModalStep, setRoutineModalStep] = useState<0 | 1 | 2 | 3>(0);
+  const [routineModalStep, setRoutineModalStep] = useState<0 | 1 | 2 | 3 | 4>(0);
   const [editingRoutineId, setEditingRoutineId] = useState<number | null>(null);
   const [routineName, setRoutineName] = useState("");
   const [routineDayCount, setRoutineDayCount] = useState(1);
@@ -274,8 +321,6 @@ function App() {
   const [editStudentLoading, setEditStudentLoading] = useState(false);
   const [editStudentError, setEditStudentError] = useState<string | null>(null);
   const [studentFullName, setStudentFullName] = useState("");
-  const [exerciseSearch, setExerciseSearch] = useState("");
-  const [studentSearch, setStudentSearch] = useState("");
   const [adminAssignModalOpen, setAdminAssignModalOpen] = useState(false);
   const [adminAssignSearch, setAdminAssignSearch] = useState("");
   const [adminAssignSelectedStudentId, setAdminAssignSelectedStudentId] = useState<number | null>(null);
@@ -305,6 +350,7 @@ function App() {
   const [deleteAssignedRoutineTarget, setDeleteAssignedRoutineTarget] = useState<Assignment | null>(null);
   const [deleteAssignedRoutineLoading, setDeleteAssignedRoutineLoading] = useState(false);
   const [deleteAssignedRoutineError, setDeleteAssignedRoutineError] = useState<string | null>(null);
+  const [exportAssignmentLoadingId, setExportAssignmentLoadingId] = useState<number | null>(null);
   const [preAssignConflictModalOpen, setPreAssignConflictModalOpen] = useState(false);
   const [preAssignConflictStudent, setPreAssignConflictStudent] = useState<Student | null>(null);
   const [preAssignConflictAssignment, setPreAssignConflictAssignment] = useState<Assignment | null>(null);
@@ -317,84 +363,65 @@ function App() {
   const [rememberMe, setRememberMe] = useState<boolean>(() => localStorage.getItem("remember_me") !== "0");
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
-  const [health, setHealth] = useState<Health | null>(null);
-  const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [routines, setRoutines] = useState<Routine[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [healthData, exercisesData, routinesData] = await Promise.all([
-          apiFetch<Health>("/health"),
-          apiFetch<Exercise[]>("/exercises"),
-          apiFetch<Routine[]>("/routines"),
-        ]);
-        setHealth(healthData);
-        setExercises(exercisesData);
-        setRoutines(routinesData);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Error desconocido";
-        setError(message);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, []);
+  const appData = useAppDataController(token);
+  const {
+    health,
+    exercises,
+    setExercises,
+    routines,
+    setRoutines,
+    students,
+    setStudents,
+    assignments,
+    setAssignments,
+    loading,
+    error,
+  } = appData;
 
   useEffect(() => {
     setUserRole(parseRoleFromToken(token));
   }, [token]);
 
   useEffect(() => {
-    if (!token && view !== "login") {
-      setView("login");
+    const hasToken = Boolean(token);
+    const nextView = getViewFromPath(location.pathname, hasToken);
+    const nextSection = getSectionFromPath(location.pathname);
+
+    if (view !== nextView) setView(nextView);
+    if (profSection !== nextSection) setProfSection(nextSection);
+
+    if (!hasToken && nextView !== "login") {
+      navigate("/login", { replace: true });
       return;
     }
-    if (token && view === "login") {
-      setView("professor");
+
+    if (nextView === "login" && location.pathname !== "/login") {
+      navigate("/login", { replace: true });
       return;
     }
-    if (view === "dashboard" && userRole !== "admin") {
-      setView(token ? "professor" : "login");
-    }
-  }, [token, userRole, view]);
 
-  useEffect(() => {
-    const fetchStudents = async () => {
-      if (!token) return;
-      try {
-        const data = await apiFetch<Student[]>("/students", { token });
-        setStudents(data);
-      } catch {
-        // Silenciamos errores aquí para no romper otras vistas.
-      }
-    };
-    if (token && students.length === 0) {
-      fetchStudents();
+    if (hasToken && location.pathname === "/login") {
+      navigate(getPathForView("professor", nextSection), { replace: true });
+      return;
     }
-  }, [token, students.length]);
 
-  useEffect(() => {
-    const fetchAssignments = async () => {
-      if (!token) return;
-      try {
-        const data = await apiFetch<Assignment[]>("/assignments", { token });
-        setAssignments(data);
-      } catch {
-        // Silenciamos errores aquí para no romper otras vistas.
-      }
-    };
-    if (token) {
-      fetchAssignments();
-    } else {
-      setAssignments([]);
+    if (nextView === "professor" && (!location.pathname.startsWith("/profesor/"))) {
+      navigate(getPathForSection(nextSection), { replace: true });
+      return;
     }
-  }, [token]);
+
+    if (nextView === "dashboard" && userRole !== "admin") {
+      navigate(getPathForView(hasToken ? "professor" : "login", nextSection), { replace: true });
+    }
+  }, [token, userRole, location.pathname, navigate, view, profSection]);
+
+  const goToView = useCallback((nextView: AppView, replace = false) => {
+    navigate(getPathForView(nextView, profSection), { replace });
+  }, [navigate, profSection]);
+
+  const goToSection = useCallback((section: ProfSection, replace = false) => {
+    navigate(getPathForSection(section), { replace });
+  }, [navigate]);
 
   const normalizeInt = (value: string) => {
     const cleaned = value.replace(/\D+/g, "");
@@ -505,7 +532,7 @@ function App() {
     }
   };
 
-  const closeCreateExerciseModal = () => {
+  const closeCreateExerciseModal = useCallback(() => {
     setCreateModalOpen(false);
     setCreateName("");
     setCreateArrows("");
@@ -513,7 +540,7 @@ function App() {
     setCreateDescription("");
     setCreateError(null);
     setCreateLoading(false);
-  };
+  }, []);
 
   const handleCreateStudentSave = async () => {
     if (!token) return;
@@ -547,7 +574,7 @@ function App() {
     }
   };
 
-  const openEditStudentModal = (student: Student) => {
+  const openEditStudentModal = useCallback((student: Student) => {
     setEditStudentTarget(student);
     setEditStudentFullName(student.full_name);
     setEditStudentDocumentNumber(student.document_number);
@@ -556,7 +583,7 @@ function App() {
     setEditStudentArrowsAvailable(student.arrows_available ?? "");
     setEditStudentError(null);
     setEditStudentModalOpen(true);
-  };
+  }, []);
 
   const handleEditStudentSave = async () => {
     if (!token || !editStudentTarget) return;
@@ -614,27 +641,15 @@ function App() {
     () => ({ exercises: exercises.length, routines: templateRoutines.length, students: students.length }),
     [exercises, templateRoutines.length, students],
   );
-  const filteredStudents = useMemo(() => {
-    const term = studentSearch.trim().toLowerCase();
-    if (!term) return students;
-    return students.filter((s) => {
-      const byName = s.full_name.toLowerCase().includes(term);
-      const byDoc = s.document_number.toLowerCase().includes(term);
-      const byContact = (s.contact || "").toLowerCase().includes(term);
-      return byName || byDoc || byContact;
-    });
-  }, [students, studentSearch]);
-
   const sortedStudents = useMemo(
     () =>
-      [...filteredStudents].sort((a, b) => {
+      [...students].sort((a, b) => {
         if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
         return a.full_name.localeCompare(b.full_name, "es", { sensitivity: "base" });
       }),
-    [filteredStudents],
+    [students],
   );
   const activeStudents = useMemo(() => sortedStudents.filter((s) => s.is_active), [sortedStudents]);
-  const inactiveStudents = useMemo(() => sortedStudents.filter((s) => !s.is_active), [sortedStudents]);
   const adminAssignableStudents = useMemo(() => {
     const term = adminAssignSearch.trim().toLowerCase();
     if (!term) return activeStudents;
@@ -654,17 +669,6 @@ function App() {
         .sort((a, b) => (a.start_date || "").localeCompare(b.start_date || "")),
     [assignments],
   );
-  const filteredExercises = useMemo(() => {
-    const term = exerciseSearch.trim().toLowerCase();
-    if (!term) return exercises;
-    return exercises.filter((ex) => {
-      const byName = ex.name.toLowerCase().includes(term);
-      const byDescription = (ex.description || "").toLowerCase().includes(term);
-      const byArrows = String(ex.arrows_count).includes(term);
-      const byDistance = String(ex.distance_m).includes(term);
-      return byName || byDescription || byArrows || byDistance;
-    });
-  }, [exercises, exerciseSearch]);
 
   const routineBuilderDays = useMemo(
     () =>
@@ -693,17 +697,19 @@ function App() {
     () => [...templateRoutines].sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" })),
     [templateRoutines],
   );
-  const routineModalMaxW = routineModalStep === 0 ? "520px" : routineModalStep === 1 ? "640px" : "760px";
+  const routineModalMaxW = routineModalStep === 0 ? "520px" : routineModalStep === 1 ? "640px" : routineModalStep === 4 ? "700px" : "760px";
   const routineModalMinHeight = routineModalStep === 0
     ? 320
     : routineModalStep === 1
       ? 220
       : routineModalStep === 2
         ? 300
-        : Math.min(340 + Math.max(0, routineDayCount - 1) * 55, 760);
-  const routineModalMaxBodyHeight = routineModalStep === 0 ? 420 : routineModalStep === 1 ? 420 : routineModalStep === 2 ? 620 : 760;
-  const actionIconButtonSize = { base: "xs", xl: "sm", "2xl": "md" } as const;
-  const actionIconSize = "15px";
+        : routineModalStep === 4
+          ? 260
+        : Math.min(380 + Math.max(0, routineDayCount - 1) * 55, 760);
+  const routineModalMaxBodyHeight = routineModalStep === 0 ? 420 : routineModalStep === 1 ? 420 : routineModalStep === 2 ? 620 : routineModalStep === 4 ? 420 : 680;
+  const actionIconButtonSize = ACTION_ICON_BUTTON_SIZE;
+  const actionIconSize = ACTION_ICON_SIZE;
   const filteredRoutineExercises = useMemo(() => {
     const term = routineExerciseSearch.trim().toLowerCase();
     if (!term) return exercises;
@@ -714,12 +720,12 @@ function App() {
     });
   }, [exercises, routineExerciseSearch]);
   const routineSummaryListMaxH = Math.max(
-    240,
-    Math.min(520, 240 + (routineDayCount - 1) * 55),
+    220,
+    Math.min(420, 220 + (routineDayCount - 1) * 50),
   );
   const routineAssignSummaryListMaxH = Math.max(
-    240,
-    Math.min(520, 240 + (routineAssignDayCount - 1) * 55),
+    220,
+    Math.min(420, 220 + (routineAssignDayCount - 1) * 50),
   );
 
   useLayoutEffect(() => {
@@ -779,17 +785,17 @@ function App() {
 
   const getRoutineWeekArrows = (routine: Routine) => routine.days.reduce((sum, day) => sum + getRoutineDayArrows(day), 0);
 
-  const openAdminAssignModal = () => {
+  const openAdminAssignModal = useCallback(() => {
     setAdminAssignSearch("");
     setAdminAssignSelectedStudentId(null);
     setAdminAssignModalOpen(true);
-  };
+  }, []);
 
-  const closeAdminAssignModal = () => {
+  const closeAdminAssignModal = useCallback(() => {
     setAdminAssignModalOpen(false);
     setAdminAssignSearch("");
     setAdminAssignSelectedStudentId(null);
-  };
+  }, []);
 
   const handleAdminAssignContinue = () => {
     if (!adminAssignSelectedStudentId) return;
@@ -799,7 +805,7 @@ function App() {
     openAssignRoutineModal(student);
   };
 
-  const resetAssignRoutineDraft = () => {
+  const resetAssignRoutineDraft = useCallback(() => {
     setRoutineAssignDayCount(1);
     setRoutineAssignExercisesByDay({});
     setRoutineAssignExerciseOverridesByDay({});
@@ -810,9 +816,9 @@ function App() {
     setEditAssignExerciseTarget(null);
     setDeleteAssignDayConfirmOpen(false);
     setDeleteAssignDayTargetNumber(null);
-  };
+  }, []);
 
-  const openAssignRoutineModal = (student: Student) => {
+  const openAssignRoutineModal = useCallback((student: Student) => {
     const existingActive = assignments
       .filter((a) => a.student_id === student.id && a.status === "active")
       .sort((a, b) => (b.start_date || "").localeCompare(a.start_date || ""))[0];
@@ -832,9 +838,9 @@ function App() {
     setAssignmentStartDate(getTodayIsoLocal());
     resetAssignRoutineDraft();
     setAssignRoutineModalOpen(true);
-  };
+  }, [assignments, resetAssignRoutineDraft]);
 
-  const closeAssignRoutineModal = () => {
+  const closeAssignRoutineModal = useCallback(() => {
     setAssignRoutineModalOpen(false);
     setAssignRoutineStudent(null);
     setAssignRoutineStep("choice");
@@ -844,7 +850,7 @@ function App() {
     setAssignmentStartDate(getTodayIsoLocal());
     resetAssignRoutineDraft();
     setReplaceAssignError(null);
-  };
+  }, [resetAssignRoutineDraft]);
 
   const handlePreAssignDeleteAndContinue = async () => {
     if (!token || !preAssignConflictStudent || !preAssignConflictAssignment) return;
@@ -900,7 +906,7 @@ function App() {
         localStorage.removeItem("token");
         localStorage.setItem("remember_me", "0");
       }
-      setView("professor");
+      goToView("professor", true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al iniciar sesión";
       setAuthError(msg);
@@ -909,7 +915,7 @@ function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     setToken(null);
     setUserRole(null);
     localStorage.removeItem("token");
@@ -917,10 +923,10 @@ function App() {
     setUsername("");
     setPassword("");
     setStudents([]);
-    setView("login");
-  };
+    goToView("login", true);
+  }, [goToView, setStudents]);
 
-  const openCreateRoutineModal = () => {
+  const openCreateRoutineModal = useCallback(() => {
     setEditingRoutineId(null);
     setRoutineName("");
     setRoutineDayCount(1);
@@ -942,9 +948,9 @@ function App() {
     setCreateRoutineError(null);
     setRoutineModalStep(0);
     setCreateRoutineModalOpen(true);
-  };
+  }, []);
 
-  const closeCreateRoutineModal = () => {
+  const closeCreateRoutineModal = useCallback(() => {
     setCreateRoutineModalOpen(false);
     setRoutineModalStep(0);
     setRoutineDayCount(1);
@@ -967,9 +973,9 @@ function App() {
     setCreateRoutineLoading(false);
     setEditingRoutineId(null);
     setRoutineAssignStudentId(null);
-  };
+  }, []);
 
-  const openEditRoutineModal = (routine: Routine) => {
+  const openEditRoutineModal = useCallback((routine: Routine) => {
     const sortedDays = [...routine.days].sort((a, b) => a.day_number - b.day_number);
     const exercisesByDay: Record<string, number[]> = {};
     const overridesByDay: Record<string, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
@@ -1014,7 +1020,7 @@ function App() {
     setCreateRoutineLoading(false);
     setRoutineModalStep(0);
     setCreateRoutineModalOpen(true);
-  };
+  }, []);
 
   const toggleRoutineExerciseForDay = (dayKey: string, exerciseId: number) => {
     setRoutineExercisesByDay((prev) => {
@@ -1543,6 +1549,47 @@ function App() {
     }
   };
 
+  const handleExportAssignmentPdf = useCallback(async (assignmentId: number) => {
+    if (!token) return;
+    setExportAssignmentLoadingId(assignmentId);
+    try {
+      const response = await fetch(`${API_BASE}/assignments/${assignmentId}/pdf`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        let detail = "No se pudo generar el PDF";
+        try {
+          const body = (await response.json()) as { detail?: string };
+          if (body?.detail) detail = body.detail;
+        } catch {
+          // ignore json parse error
+        }
+        throw new Error(detail);
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename=\"([^\"]+)\"/i);
+      const filename = match?.[1] || `rutina_${assignmentId}.pdf`;
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "No se pudo generar el PDF";
+      setDeleteAssignedRoutineError(msg);
+    } finally {
+      setExportAssignmentLoadingId(null);
+    }
+  }, [token]);
+
   const handleDeleteRoutineConfirm = async () => {
     if (!token || !deleteRoutineTarget) return;
     setDeleteRoutineLoading(true);
@@ -1764,7 +1811,7 @@ function App() {
                   color={profSection === "administrar_rutinas" ? "orange.600" : "gray.700"}
                   fontWeight={profSection === "administrar_rutinas" ? "600" : "500"}
                   cursor="pointer"
-                  onClick={() => setProfSection("administrar_rutinas")}
+                  onClick={() => goToSection("administrar_rutinas")}
                 >
                   <Box
                     as="svg"
@@ -1787,11 +1834,12 @@ function App() {
                   px={3}
                   py={3}
                   borderRadius="md"
-                  color={profSection === "rutina" ? "gray.900" : "gray.700"}
+                  bg={profSection === "rutina" ? "orange.50" : "transparent"}
+                  color={profSection === "rutina" ? "orange.600" : "gray.700"}
                   fontWeight={profSection === "rutina" ? "600" : "500"}
                   cursor="pointer"
                   _hover={{ bg: "gray.50" }}
-                  onClick={() => setProfSection("rutina")}
+                  onClick={() => goToSection("rutina")}
                 >
                   <Box
                     as="svg"
@@ -1818,11 +1866,12 @@ function App() {
                   px={3}
                   py={3}
                   borderRadius="md"
-                  color={profSection === "ejercicio" ? "gray.900" : "gray.700"}
+                  bg={profSection === "ejercicio" ? "orange.50" : "transparent"}
+                  color={profSection === "ejercicio" ? "orange.600" : "gray.700"}
                   fontWeight={profSection === "ejercicio" ? "600" : "500"}
                   cursor="pointer"
                   _hover={{ bg: "gray.50" }}
-                  onClick={() => setProfSection("ejercicio")}
+                  onClick={() => goToSection("ejercicio")}
                 >
                   <Box
                     as="svg"
@@ -1845,11 +1894,12 @@ function App() {
                   px={3}
                   py={3}
                   borderRadius="md"
-                  color={profSection === "alumno" ? "gray.900" : "gray.700"}
+                  bg={profSection === "alumno" ? "orange.50" : "transparent"}
+                  color={profSection === "alumno" ? "orange.600" : "gray.700"}
                   fontWeight={profSection === "alumno" ? "600" : "500"}
                   cursor="pointer"
                   _hover={{ bg: "gray.50" }}
-                  onClick={() => setProfSection("alumno")}
+                  onClick={() => goToSection("alumno")}
                 >
                   <Box
                     as="svg"
@@ -1872,16 +1922,16 @@ function App() {
               </Stack>
               <Stack spacing={3}>
                 {userRole === "admin" && (
-                  <Button size="sm" variant="outline" onClick={() => setView("dashboard")}>
+                  <Button size="sm" variant="outline" onClick={() => goToView("dashboard")}>
                     Ver conexiones
                   </Button>
                 )}
               </Stack>
               <Box flex="1" />
               <Box borderTop="1px solid" borderColor="gray.200" pt={3}>
-                <HStack px={2} py={2.5} borderRadius="md" cursor="pointer" _hover={{ bg: "gray.50" }} onClick={() => setProfSection("perfil")}>
+                <HStack px={2} py={2.5} borderRadius="md" bg={profSection === "perfil" ? "orange.50" : "transparent"} cursor="pointer" _hover={{ bg: "gray.50" }} onClick={() => goToSection("perfil")}>
                   <Text fontSize="17px">◉</Text>
-                  <Text fontSize="17px" color="gray.700" fontWeight={profSection === "perfil" ? "600" : "500"}>
+                  <Text fontSize="17px" color={profSection === "perfil" ? "orange.600" : "gray.700"} fontWeight={profSection === "perfil" ? "600" : "500"}>
                     Perfil
                   </Text>
                 </HStack>
@@ -1896,661 +1946,97 @@ function App() {
           </GridItem>
           <GridItem pl={{ base: 6, md: 8 }} pr={{ base: 6, md: 8 }} py={{ base: 6, md: 7 }} display="flex" alignItems="flex-start" justifyContent="flex-start" w="full" fontSize={{ base: "sm", xl: "md", "2xl": "lg" }}>
             <Stack spacing={{ base: 4, xl: 6 }} w="full">
-              {profSection === "administrar_rutinas" && (
-                <Stack spacing={6} maxW="980px">
-                  <HStack justify="space-between" align="flex-start">
-                    <Stack spacing={1}>
-                      <Heading size="lg">Rutinas activas</Heading>
-                      <Text color="gray.500" fontSize="sm">
-                        Gestiona y supervisa el progreso de tus arqueros.
-                      </Text>
-                    </Stack>
-                    <Button bg="#d97706" color="white" borderRadius="md" px={5} _hover={{ bg: "#b45309" }} _active={{ bg: "#92400e" }} onClick={openAdminAssignModal}>
-                      <HStack spacing={2}>
-                        <Box
-                          as="svg"
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          boxSize="16px"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
-                          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-                          <path d="M9 14h6" />
-                          <path d="M12 17v-6" />
-                        </Box>
-                        <Text>Asignar rutina</Text>
-                      </HStack>
-                    </Button>
-                  </HStack>
-                  <Stack spacing={4}>
-                    {activeAssignments.map((assignment) => {
-                      const routine = routines.find((r) => r.id === assignment.routine_id);
-                      const orderedDays = routine ? [...routine.days].sort((a, b) => a.day_number - b.day_number) : [];
-                      return (
-                        <Box key={assignment.id} borderWidth="1px" borderColor="gray.200" borderRadius="xl" bg="white" overflow="hidden">
-                          <Box p={6}>
-                            <HStack justify="space-between" align="start" mb={4}>
-                              <Stack spacing={1}>
-                                <Heading size="md" color="gray.900">
-                                  {studentNameById.get(assignment.student_id) || `Alumno #${assignment.student_id}`}
-                                </Heading>
-                                <Text color="gray.600" fontSize="sm" fontWeight="medium">
-                                  {routineNameById.get(assignment.routine_id) || `Rutina #${assignment.routine_id}`}
-                                </Text>
-                                <Text color="gray.400" fontSize="xs">
-                                  Semana: {formatDateEs(assignment.start_date)} a {formatDateEs(assignment.end_date)}
-                                </Text>
-                              </Stack>
-                              <Badge bg="green.100" color="green.800" borderRadius="full" px={3} py={1} fontSize="10px" fontWeight="700">
-                                ACTIVA
-                              </Badge>
-                            </HStack>
-                            <Stack spacing={5}>
-                              {orderedDays.map((day) => (
-                                <Box key={day.id} pl={3} borderLeft="2px solid" borderColor="gray.200">
-                                  <HStack justify="space-between" align="start" mb={1}>
-                                    <Text color="gray.800" fontWeight="semibold">
-                                      {day.name || formatDay(day)}
-                                    </Text>
-                                    <Text color="gray.400" fontSize="xs">
-                                      Flechas totales: {getRoutineDayArrows(day)}
-                                    </Text>
-                                  </HStack>
-                                  <Stack as="ul" spacing={1}>
-                                    {day.exercises.map((dayExercise) => (
-                                      <HStack as="li" key={dayExercise.id} align="flex-start" spacing={2}>
-                                        <Box w="5px" h="5px" mt="7px" borderRadius="full" bg="orange.400" flexShrink={0} />
-                                        <Text fontSize="sm" color="gray.600">
-                                          {exerciseNameById.get(dayExercise.exercise_id) || `Ejercicio #${dayExercise.exercise_id}`}
-                                        </Text>
-                                      </HStack>
-                                    ))}
-                                  </Stack>
-                                </Box>
-                              ))}
-                              {!routine && <Text color="gray.500">No se encontró la rutina asociada.</Text>}
-                            </Stack>
-                          </Box>
-                          <HStack justify="flex-end" spacing={2} px={6} py={3} bg="gray.50" borderTopWidth="1px" borderColor="gray.200">
-                            <Button
-                              size={actionIconButtonSize}
-                              variant="ghost"
-                              color="gray.400"
-                              _hover={{ bg: "gray.100", color: "gray.700" }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                              }}
-                              aria-label="Exportar rutina"
-                            >
-                              <Box
-                                as="svg"
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 24 24"
-                                boxSize="16px"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
-                                <path d="M14 2v5a1 1 0 0 0 1 1h5" />
-                                <path d="M10 9H8" />
-                                <path d="M16 13H8" />
-                                <path d="M16 17H8" />
-                              </Box>
-                            </Button>
-                            <Button
-                              size={actionIconButtonSize}
-                              variant="ghost"
-                              color="gray.400"
-                              _hover={{ bg: "gray.100", color: "red.600" }}
-                              onClick={() => {
-                                setDeleteAssignedRoutineError(null);
-                                setDeleteAssignedRoutineTarget(assignment);
-                                setDeleteAssignedRoutineModalOpen(true);
-                              }}
-                              aria-label="Eliminar rutina activa"
-                            >
-                              <Box
-                                as="svg"
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 24 24"
-                                boxSize="16px"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M10 11v6" />
-                                <path d="M14 11v6" />
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                                <path d="M3 6h18" />
-                                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                              </Box>
-                            </Button>
-                          </HStack>
-                        </Box>
-                      );
-                    })}
-                    {!activeAssignments.length && <Text color="gray.600">No hay rutinas activas asignadas.</Text>}
-                  </Stack>
-                </Stack>
-              )}
-              {profSection === "rutina" && (
-                <Stack spacing={6}>
-                  <HStack justify="space-between" align="center" spacing={4} w="full" maxW="980px">
-                    <Stack spacing={1}>
-                      <Heading size="lg">Rutinas</Heading>
-                      <Text color="gray.500" fontSize="sm">
-                        Gestiona tus rutinas predefinidas.
-                      </Text>
-                    </Stack>
-                    <Button
-                      bg="#f97316"
-                      color="white"
-                      borderRadius="10px"
-                      _hover={{ bg: "#ea580c" }}
-                      _active={{ bg: "#c2410c" }}
-                      onClick={openCreateRoutineModal}
-                    >
-                      <HStack justify="center" spacing={2}>
-                        <Image src={notebookTabsIconUrl} alt="Agregar rutina" boxSize="16px" filter="brightness(0) invert(1)" />
-                        <Text>Agregar rutina</Text>
-                      </HStack>
-                    </Button>
-                  </HStack>
-                  <Stack spacing={4} w="full" maxW="980px">
-                    {sortedRoutines.map((routine) => {
-                      const orderedDays = [...routine.days].sort((a, b) => a.day_number - b.day_number);
-                      const daysPreview = `${orderedDays.length} Días`;
-                      const weekArrowsTotal = getRoutineWeekArrows(routine);
-                      const isExpanded = expandedRoutine === routine.id;
-                      return (
-                        <Box
-                          key={routine.id}
-                          borderWidth="1px"
-                          borderRadius="12px"
-                          borderColor="gray.200"
-                          bg="white"
-                          overflow="hidden"
-                          _hover={{ borderColor: "gray.300", cursor: "pointer" }}
-                          onClick={() => setExpandedRoutine((prev) => (prev === routine.id ? null : routine.id))}
-                        >
-                          <Box p={{ base: 4, xl: 5 }}>
-                            <Stack spacing={1.5}>
-                              <HStack justify="space-between" align="flex-start" w="full" spacing={4}>
-                                <Heading size="md" color="gray.900">
-                                  {routine.name}
-                                </Heading>
-                                <Text color="gray.500" fontSize="sm" whiteSpace="nowrap">
-                                  Flechas totales: {weekArrowsTotal}
-                                </Text>
-                              </HStack>
-                              <Text color="gray.500">{daysPreview}</Text>
-                              <Collapse in={isExpanded} animateOpacity>
-                                <Stack spacing={4} pt={2}>
-                                  {orderedDays.map((day) => (
-                                    <Box key={day.id} pl={3} borderLeft="2px solid" borderColor="gray.200">
-                                      <HStack spacing={2} align="baseline" w="full">
-                                        <Text color="gray.700" fontWeight="medium">
-                                          {day.name || formatDay(day)}
-                                        </Text>
-                                        <Text color="gray.400" fontSize="sm">
-                                          •
-                                        </Text>
-                                        <Text color="gray.500" fontSize="sm">
-                                          Flechas totales: {getRoutineDayArrows(day)}
-                                        </Text>
-                                      </HStack>
-                                      <Stack as="ul" spacing={0.75} mt={1}>
-                                        {day.exercises.map((dayExercise) => (
-                                          <HStack as="li" key={dayExercise.id} align="flex-start" spacing={2}>
-                                            <Box w="5px" h="5px" mt="7px" borderRadius="full" bg="orange.400" flexShrink={0} />
-                                            <Text fontSize="sm" color="gray.500">
-                                              {exerciseNameById.get(dayExercise.exercise_id) || `Ejercicio #${dayExercise.exercise_id}`}
-                                            </Text>
-                                          </HStack>
-                                        ))}
-                                        {!day.exercises.length && (
-                                          <HStack as="li" align="flex-start" spacing={2}>
-                                            <Box w="5px" h="5px" mt="7px" borderRadius="full" bg="gray.300" flexShrink={0} />
-                                            <Text fontSize="sm" color="gray.500">
-                                              Sin ejercicios
-                                            </Text>
-                                          </HStack>
-                                        )}
-                                      </Stack>
-                                    </Box>
-                                  ))}
-                                </Stack>
-                              </Collapse>
-                            </Stack>
-                          </Box>
-                          <Collapse in={isExpanded} animateOpacity>
-                            <HStack justify="flex-start" spacing={2} px={5} py={3} bg="gray.50" borderTopWidth="1px" borderColor="gray.200">
-                              <Button
-                                size={actionIconButtonSize}
-                                variant="ghost"
-                                color="gray.400"
-                                _hover={{ bg: "gray.100", color: "blue.600" }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openEditRoutineModal(routine);
-                                }}
-                              >
-                                <Image src={editIconUrl} alt="Editar" boxSize={actionIconSize} />
-                              </Button>
-                              <Button
-                                size={actionIconButtonSize}
-                                variant="ghost"
-                                color="gray.400"
-                                _hover={{ bg: "red.50", color: "red.600" }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDeleteRoutineError(null);
-                                  setDeleteRoutineTarget(routine);
-                                  setDeleteRoutineModalOpen(true);
-                                }}
-                              >
-                                <Box
-                                  as="svg"
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  viewBox="0 0 24 24"
-                                  boxSize={actionIconSize}
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <path d="M10 11v6" />
-                                  <path d="M14 11v6" />
-                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                                  <path d="M3 6h18" />
-                                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                </Box>
-                              </Button>
-                            </HStack>
-                          </Collapse>
-                        </Box>
-                      );
-                    })}
-                    {!sortedRoutines.length && <Text color="gray.600">No hay rutinas para mostrar.</Text>}
-                  </Stack>
-                </Stack>
-              )}
-              {profSection === "ejercicio" && (
-                <Stack spacing={6}>
-                  <HStack justify="space-between" align="center" spacing={4} w="full" maxW="980px">
-                    <InputGroup maxW="420px">
-                      <InputLeftElement pointerEvents="none" color="gray.500">
-                        <SearchIcon boxSize={3.5} />
-                      </InputLeftElement>
-                      <Input
-                        value={exerciseSearch}
-                        onChange={(e) => setExerciseSearch(e.target.value)}
-                        placeholder="Buscar ejercicios"
-                        bg="white"
-                        borderColor="gray.300"
-                        borderRadius="10px"
-                        _hover={{ borderColor: "gray.400" }}
-                        _focus={{ borderColor: "gray.500", bg: "white" }}
-                      />
-                    </InputGroup>
-                    <Button
-                      bg="#f97316"
-                      color="white"
-                      borderRadius="10px"
-                      _hover={{ bg: "#ea580c" }}
-                      _active={{ bg: "#c2410c" }}
-                      onClick={() => setCreateModalOpen(true)}
-                    >
-                      <HStack justify="center" spacing={2}>
-                        <Image src={bowIconUrl} alt="Bow icon" boxSize="16px" filter="brightness(0) invert(1)" />
-                        <Text>Crear ejercicio</Text>
-                      </HStack>
-                    </Button>
-                  </HStack>
-                  <HStack align="flex-start" spacing={8} justify="space-between" w="full">
-                    <Stack spacing={4} flex="1" maxW="980px">
-                      {filteredExercises.map((ex) => (
-                        <Box
-                          key={ex.id}
-                          w="full"
-                          borderWidth="1px"
-                          borderRadius="12px"
-                          borderColor="gray.200"
-                          bg="white"
-                          overflow="hidden"
-                          _hover={{ borderColor: "gray.300", cursor: "pointer" }}
-                          onClick={() => setExpandedExercise((prev) => (prev === ex.id ? null : ex.id))}
-                        >
-                          <Box p={{ base: 4, xl: 5 }}>
-                            <Stack spacing={2}>
-                              <Heading size="md" color="gray.900">
-                                {ex.name}
-                              </Heading>
-                              <Text color="gray.500">{ex.arrows_count} flechas</Text>
-                              <Collapse in={expandedExercise === ex.id} animateOpacity>
-                                <Stack spacing={1.5} color="gray.700" pt={1}>
-                                  <Text color="gray.500">Distancia: {ex.distance_m} m</Text>
-                                  <Text color="gray.500" fontSize="95%">
-                                    Descripción: {ex.description || "Sin descripción"}
-                                  </Text>
-                                </Stack>
-                              </Collapse>
-                            </Stack>
-                          </Box>
-                          <Collapse in={expandedExercise === ex.id} animateOpacity>
-                            <HStack justify="flex-start" spacing={2} px={5} py={3} bg="gray.50" borderTopWidth="1px" borderColor="gray.200">
-                              <Button
-                                size={actionIconButtonSize}
-                                variant="ghost"
-                                color="gray.400"
-                                _hover={{ bg: "gray.100", color: "blue.600" }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditExercise(ex);
-                                  setEditName(ex.name);
-                                  setEditArrows(ex.arrows_count);
-                                  setEditDistance(ex.distance_m);
-                                  setEditDescription(ex.description || "");
-                                  setEditError(null);
-                                  setEditModalOpen(true);
-                                }}
-                              >
-                                <Image src={editIconUrl} alt="Editar" boxSize={actionIconSize} />
-                              </Button>
-                              <Button
-                                size={actionIconButtonSize}
-                                variant="ghost"
-                                color="gray.400"
-                                _hover={{ bg: "red.50", color: "red.600" }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDeleteExercise(ex);
-                                  setDeleteModalOpen(true);
-                                }}
-                              >
-                                <Box
-                                  as="svg"
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  viewBox="0 0 24 24"
-                                  boxSize={actionIconSize}
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <path d="M10 11v6" />
-                                  <path d="M14 11v6" />
-                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                                  <path d="M3 6h18" />
-                                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                </Box>
-                              </Button>
-                            </HStack>
-                          </Collapse>
-                        </Box>
-                      ))}
-                      {!filteredExercises.length && <Text color="gray.600">No hay ejercicios para mostrar.</Text>}
-                    </Stack>
-                  </HStack>
-                </Stack>
-              )}
-              {profSection === "alumno" && (
-                <Stack spacing={6}>
-                  <HStack justify="space-between" align="center" spacing={4} w="full" maxW="980px">
-                    <InputGroup maxW="420px">
-                      <InputLeftElement pointerEvents="none" color="gray.500">
-                        <SearchIcon boxSize={3.5} />
-                      </InputLeftElement>
-                      <Input
-                        value={studentSearch}
-                        onChange={(e) => setStudentSearch(e.target.value)}
-                        placeholder="Buscar alumnos"
-                        bg="white"
-                        borderColor="gray.300"
-                        borderRadius="10px"
-                        _hover={{ borderColor: "gray.400" }}
-                        _focus={{ borderColor: "gray.500", bg: "white" }}
-                      />
-                    </InputGroup>
-                    <Button
-                      bg="#f97316"
-                      color="white"
-                      borderRadius="10px"
-                      _hover={{ bg: "#ea580c" }}
-                      _active={{ bg: "#c2410c" }}
-                      onClick={() => setCreateStudentModalOpen(true)}
-                    >
-                      <HStack justify="center" spacing={2}>
-                        <Image src={userPlusIconUrl} alt="Agregar alumno" boxSize="16px" filter="brightness(0) invert(1)" />
-                        <Text>Agregar alumno</Text>
-                      </HStack>
-                    </Button>
-                  </HStack>
-                  <Stack spacing={6} w="full" maxW="980px">
-                    <Stack spacing={3}>
-                      <Heading size="md" color="black">
-                        Alumnos activos
-                      </Heading>
-                      {activeStudents.map((st) => (
-                        <Box
-                          key={st.id}
-                          borderWidth="1px"
-                          borderRadius="12px"
-                          borderColor="gray.200"
-                          bg="white"
-                          overflow="hidden"
-                          _hover={{ borderColor: "gray.300", cursor: "pointer" }}
-                          onClick={() => setExpandedStudent((prev) => (prev === st.id ? null : st.id))}
-                        >
-                          <Box p={{ base: 4, xl: 5 }}>
-                            <HStack justify="space-between" align="start">
-                              <Heading size="md" color="gray.900" fontWeight="normal">
-                                {st.full_name}
-                              </Heading>
-                              <Badge colorScheme="green">Activo</Badge>
-                            </HStack>
-                            <Collapse in={expandedStudent === st.id} animateOpacity>
-                              <Stack spacing={1.5} mt={2} color="gray.600" fontSize="sm">
-                                <Text>DNI: {st.document_number}</Text>
-                                {st.contact && <Text>Contacto: {st.contact}</Text>}
-                                {typeof st.bow_pounds === "number" && <Text>Arco: {st.bow_pounds} lb</Text>}
-                                {typeof st.arrows_available === "number" && <Text>Flechas: {st.arrows_available}</Text>}
-                              </Stack>
-                            </Collapse>
-                          </Box>
-                          <Collapse in={expandedStudent === st.id} animateOpacity>
-                            <HStack justify="flex-start" align="center" px={5} py={3} bg="gray.50" borderTopWidth="1px" borderColor="gray.200">
-                              <HStack spacing={2}>
-                                <Button
-                                  size={actionIconButtonSize}
-                                  variant="ghost"
-                                  color="gray.400"
-                                  _hover={{ bg: "gray.100", color: "blue.600" }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openEditStudentModal(st);
-                                  }}
-                                >
-                                  <Image src={editIconUrl} alt="Editar alumno" boxSize={actionIconSize} />
-                                </Button>
-                                <Button
-                                  size={actionIconButtonSize}
-                                  variant="ghost"
-                                  color="gray.400"
-                                  _hover={{ bg: "red.50", color: "red.600" }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setDeactivateStudent(st);
-                                    setDeactivateError(null);
-                                    setDeactivateModalOpen(true);
-                                  }}
-                                >
-                                  <Box
-                                    as="svg"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    viewBox="0 0 24 24"
-                                    boxSize={actionIconSize}
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  >
-                                    <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
-                                    <path d="m14.5 9.5-5 5" />
-                                    <path d="m9.5 9.5 5 5" />
-                                  </Box>
-                                </Button>
-                              </HStack>
-                              <Button
-                                size={{ base: "sm", xl: "md", "2xl": "lg" }}
-                                variant="outline"
-                                borderRadius="lg"
-                                borderColor="gray.300"
-                                color="gray.800"
-                                _hover={{ borderColor: "gray.500", bg: "gray.50" }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openAssignRoutineModal(st);
-                                }}
-                                h="40px"
-                                px={3}
-                              >
-                                <HStack spacing={2}>
-                                  <Box
-                                    as="svg"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    viewBox="0 0 24 24"
-                                    boxSize="18px"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2.6"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  >
-                                    <rect width="18" height="18" x="3" y="3" rx="2" />
-                                    <path d="M8 12h8" />
-                                    <path d="M12 8v8" />
-                                  </Box>
-                                  <Text fontSize="sm" fontWeight="bold">
-                                    Asignar rutina
-                                  </Text>
-                                </HStack>
-                              </Button>
-                            </HStack>
-                          </Collapse>
-                        </Box>
-                      ))}
-                      {!activeStudents.length && <Text color="gray.600">No hay alumnos activos.</Text>}
-                    </Stack>
-
-                    <Stack spacing={3}>
-                      <Heading size="md" color="black">
-                        Alumnos inactivos
-                      </Heading>
-                      {inactiveStudents.map((st) => (
-                        <Box
-                          key={st.id}
-                          borderWidth="1px"
-                          borderRadius="12px"
-                          borderColor="gray.200"
-                          bg="white"
-                          overflow="hidden"
-                          _hover={{ borderColor: "gray.300", cursor: "pointer" }}
-                          onClick={() => setExpandedStudent((prev) => (prev === st.id ? null : st.id))}
-                        >
-                          <Box p={{ base: 4, xl: 5 }}>
-                            <HStack justify="space-between" align="start">
-                              <Heading size="md" color="gray.900" fontWeight="normal">
-                                {st.full_name}
-                              </Heading>
-                              <Badge colorScheme="red">Inactivo</Badge>
-                            </HStack>
-                            <Collapse in={expandedStudent === st.id} animateOpacity>
-                              <Stack spacing={1.5} mt={2} color="gray.600" fontSize="sm">
-                                <Text>DNI: {st.document_number}</Text>
-                                {st.contact && <Text>Contacto: {st.contact}</Text>}
-                                {typeof st.bow_pounds === "number" && <Text>Arco: {st.bow_pounds} lb</Text>}
-                                {typeof st.arrows_available === "number" && <Text>Flechas: {st.arrows_available}</Text>}
-                              </Stack>
-                            </Collapse>
-                          </Box>
-                          <Collapse in={expandedStudent === st.id} animateOpacity>
-                            <HStack justify="space-between" align="center" px={5} py={3} bg="gray.50" borderTopWidth="1px" borderColor="gray.200">
-                              <HStack spacing={2}>
-                                <Button
-                                  size={actionIconButtonSize}
-                                  variant="ghost"
-                                  color="gray.400"
-                                  _hover={{ bg: "gray.100", color: "blue.600" }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openEditStudentModal(st);
-                                  }}
-                                >
-                                  <Image src={editIconUrl} alt="Editar alumno" boxSize={actionIconSize} />
-                                </Button>
-                                <Button
-                                  size={actionIconButtonSize}
-                                  variant="ghost"
-                                  color="gray.400"
-                                  _hover={{ bg: "green.50", color: "green.600" }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActivateStudent(st);
-                                    setActivateError(null);
-                                    setActivateModalOpen(true);
-                                  }}
-                                >
-                                  <Box
-                                    as="svg"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    viewBox="0 0 24 24"
-                                    boxSize="16px"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  >
-                                    <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
-                                    <path d="m9 12 2 2 4-4" />
-                                  </Box>
-                                </Button>
-                              </HStack>
-                            </HStack>
-                          </Collapse>
-                        </Box>
-                      ))}
-                      {!inactiveStudents.length && <Text color="gray.600">No hay alumnos inactivos.</Text>}
-                    </Stack>
-                  </Stack>
-                </Stack>
-              )}
-              {profSection === "perfil" && (
-                <Stack spacing={2}>
-                  <Heading size="lg">Perfil</Heading>
-                  <Text color="gray.600">Resumen del usuario y opciones de cuenta.</Text>
-                </Stack>
-              )}
+              <AppDataProvider value={appData}>
+              <ProfessorListsProvider>
+              <Suspense fallback={<Spinner />}>
+                {profSection === "administrar_rutinas" && (
+                  <AdminRoutinesSection
+                    activeAssignments={activeAssignments}
+                    routines={routines}
+                    studentNameById={studentNameById}
+                    routineNameById={routineNameById}
+                    formatDateEs={formatDateEs}
+                    formatDay={formatDay}
+                    getRoutineDayArrows={getRoutineDayArrows}
+                    exerciseNameById={exerciseNameById}
+                    actionIconButtonSize={actionIconButtonSize}
+                    exportAssignmentLoadingId={exportAssignmentLoadingId}
+                    handleExportAssignmentPdf={handleExportAssignmentPdf}
+                    openAdminAssignModal={openAdminAssignModal}
+                    setDeleteAssignedRoutineError={setDeleteAssignedRoutineError}
+                    setDeleteAssignedRoutineTarget={setDeleteAssignedRoutineTarget}
+                    setDeleteAssignedRoutineModalOpen={setDeleteAssignedRoutineModalOpen}
+                  />
+                )}
+                {profSection === "rutina" && (
+                  <RoutinesSection
+                    sortedRoutines={sortedRoutines}
+                    expandedRoutine={expandedRoutine}
+                    setExpandedRoutine={setExpandedRoutine}
+                    getRoutineWeekArrows={getRoutineWeekArrows}
+                    getRoutineDayArrows={getRoutineDayArrows}
+                    exerciseNameById={exerciseNameById}
+                    formatDay={formatDay}
+                    actionIconButtonSize={actionIconButtonSize}
+                    actionIconSize={actionIconSize}
+                    editIconUrl={editIconUrl}
+                    notebookTabsIconUrl={notebookTabsIconUrl}
+                    openCreateRoutineModal={openCreateRoutineModal}
+                    openEditRoutineModal={openEditRoutineModal}
+                    setDeleteRoutineError={setDeleteRoutineError}
+                    setDeleteRoutineTarget={setDeleteRoutineTarget}
+                    setDeleteRoutineModalOpen={setDeleteRoutineModalOpen}
+                  />
+                )}
+                {profSection === "ejercicio" && (
+                  <ExercisesSection
+                    expandedExercise={expandedExercise}
+                    setExpandedExercise={setExpandedExercise}
+                    setCreateModalOpen={setCreateModalOpen}
+                    setEditExercise={setEditExercise}
+                    setEditName={setEditName}
+                    setEditArrows={setEditArrows}
+                    setEditDistance={setEditDistance}
+                    setEditDescription={setEditDescription}
+                    setEditError={setEditError}
+                    setEditModalOpen={setEditModalOpen}
+                    setDeleteExercise={setDeleteExercise}
+                    setDeleteModalOpen={setDeleteModalOpen}
+                    actionIconButtonSize={actionIconButtonSize}
+                    actionIconSize={actionIconSize}
+                    editIconUrl={editIconUrl}
+                    bowIconUrl={bowIconUrl}
+                  />
+                )}
+                {profSection === "alumno" && (
+                  <StudentsSection
+                    expandedStudent={expandedStudent}
+                    setExpandedStudent={setExpandedStudent}
+                    setCreateStudentModalOpen={setCreateStudentModalOpen}
+                    userPlusIconUrl={userPlusIconUrl}
+                    actionIconButtonSize={actionIconButtonSize}
+                    actionIconSize={actionIconSize}
+                    editIconUrl={editIconUrl}
+                    openEditStudentModal={openEditStudentModal}
+                    setDeactivateStudent={setDeactivateStudent}
+                    setDeactivateError={setDeactivateError}
+                    setDeactivateModalOpen={setDeactivateModalOpen}
+                    openAssignRoutineModal={openAssignRoutineModal}
+                    setActivateStudent={setActivateStudent}
+                    setActivateError={setActivateError}
+                    setActivateModalOpen={setActivateModalOpen}
+                  />
+                )}
+                {profSection === "perfil" && <ProfileSection />}
+              </Suspense>
+              </ProfessorListsProvider>
+              </AppDataProvider>
             </Stack>
           </GridItem>
         </Grid>
         <Modal isOpen={editModalOpen} onClose={() => setEditModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
-          <ModalContent maxW="560px" borderRadius="12px" overflow="hidden">
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between">
                 <Text fontWeight="700" color="gray.900">Editar ejercicio</Text>
@@ -2651,7 +2137,7 @@ function App() {
         </Modal>
         <Modal isOpen={createModalOpen} onClose={closeCreateExerciseModal} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
-          <ModalContent maxW="560px" borderRadius="12px" overflow="hidden">
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between">
                 <Text fontWeight="700" color="gray.900">Nuevo Ejercicio</Text>
@@ -2755,8 +2241,8 @@ function App() {
         <Modal isOpen={createRoutineModalOpen} onClose={closeCreateRoutineModal} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent
-            maxW={routineModalMaxW}
-            maxH="86vh"
+            maxW={{ base: "calc(100vw - 1rem)", md: routineModalMaxW }}
+            maxH="90vh"
             transition="max-width 0.3s ease, max-height 0.3s ease"
             overflowY="auto"
             overflowX="hidden"
@@ -2764,7 +2250,12 @@ function App() {
             borderTop={routineModalStep === 0 ? "6px solid" : "0 solid"}
             borderTopColor={routineModalStep === 0 ? "#f97316" : "transparent"}
           >
-            <Box h={routineModalBodyHeight ? `${routineModalBodyHeight}px` : `${routineModalMinHeight}px`} transition="height 0.3s ease" overflow="hidden">
+            <Box
+              h={routineModalStep === 3 ? "auto" : routineModalBodyHeight ? `${routineModalBodyHeight}px` : `${routineModalMinHeight}px`}
+              transition="height 0.3s ease"
+              overflowX="hidden"
+              overflowY={routineModalStep === 3 ? "visible" : "hidden"}
+            >
               <Box px={6} py={6}>
                 {routineModalStep === 0 && (
                   <Stack ref={routineStepRef} spacing={6} animation={`${routineStepSlide} 0.3s ease`} px={2} pt={2} pb={0} w="full" maxW="420px" mx="auto">
@@ -2950,7 +2441,7 @@ function App() {
                     <Stack
                       ref={routineSummaryListRef}
                       spacing={3}
-                      maxH={`${routineSummaryListMaxH}px`}
+                      maxH={{ base: "36vh", md: `${routineSummaryListMaxH}px` }}
                       overflowY="auto"
                       pr={1}
                       px={4}
@@ -3081,23 +2572,6 @@ function App() {
                         </HStack>
                       )}
                     </Stack>
-                    {routineAssignStudentId && !editingRoutineId && (
-                      <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3} px={4}>
-                        <FormControl>
-                          <FormLabel>Inicio de rutina</FormLabel>
-                          <Input
-                            type="date"
-                            value={assignmentStartDate}
-                            maxW="240px"
-                            onChange={(e) => setAssignmentStartDate(e.target.value || getTodayIsoLocal())}
-                          />
-                        </FormControl>
-                        <FormControl>
-                          <FormLabel>Fin de rutina</FormLabel>
-                          <Input type="date" value={assignmentEndDate} maxW="240px" isReadOnly />
-                        </FormControl>
-                      </SimpleGrid>
-                    )}
                     {createRoutineError && (
                       <Alert status="error" borderRadius="md" mx={4}>
                         <AlertIcon />
@@ -3115,6 +2589,113 @@ function App() {
                       >
                         Volver
                       </Button>
+                      {routineAssignStudentId && !editingRoutineId ? (
+                        <Button
+                          bg="#f97316"
+                          color="white"
+                          _hover={{ bg: "#ea580c" }}
+                          _active={{ bg: "#c2410c" }}
+                          isDisabled={routineBuilderDays.some((day) => (routineExercisesByDay[day.key] || []).length === 0)}
+                          onClick={() => setRoutineModalStep(4)}
+                        >
+                          Siguiente
+                        </Button>
+                      ) : (
+                        <Button
+                          bg="#f97316"
+                          color="white"
+                          _hover={{ bg: "#ea580c" }}
+                          _active={{ bg: "#c2410c" }}
+                          isLoading={createRoutineLoading}
+                          isDisabled={routineBuilderDays.some((day) => (routineExercisesByDay[day.key] || []).length === 0)}
+                          onClick={handleCreateOrUpdateRoutineFromSummary}
+                        >
+                          {editingRoutineId ? "Guardar cambios" : "Crear rutina"}
+                        </Button>
+                      )}
+                      <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={closeCreateRoutineModal}>
+                        Cancelar
+                      </Button>
+                    </HStack>
+                  </Stack>
+                )}
+                {routineModalStep === 4 && routineAssignStudentId && !editingRoutineId && (
+                  <Stack ref={routineStepRef} spacing={4} animation={`${routineStepSlide} 0.3s ease`} px={4} py={2}>
+                    <Box borderWidth="1px" borderColor="gray.200" borderRadius="10px" p={4}>
+                      <Stack spacing={4}>
+                        <Text fontWeight="600" color="gray.800">Selecciona la semana de la rutina</Text>
+                        <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+                          <FormControl>
+                            <FormLabel>Inicio de rutina</FormLabel>
+                            <Box position="relative" maxW="240px">
+                              <Input type="text" value={formatDateEs(assignmentStartDate)} pr="44px" isReadOnly />
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                position="absolute"
+                                right="6px"
+                                top="50%"
+                                transform="translateY(-50%)"
+                                minW="30px"
+                                h="30px"
+                                p={0}
+                                aria-label="Abrir calendario"
+                                onClick={() => {
+                                  const picker = assignmentStartDatePickerRef.current;
+                                  if (!picker) return;
+                                  if ("showPicker" in picker) {
+                                    (picker as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+                                  } else {
+                                    (picker as HTMLInputElement).click();
+                                  }
+                                }}
+                              >
+                                <Box
+                                  as="svg"
+                                  viewBox="0 0 24 24"
+                                  boxSize="16px"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <rect width="18" height="18" x="3" y="4" rx="2" />
+                                  <path d="M16 2v4" />
+                                  <path d="M8 2v4" />
+                                  <path d="M3 10h18" />
+                                </Box>
+                              </Button>
+                              <Input
+                                ref={assignmentStartDatePickerRef}
+                                type="date"
+                                value={assignmentStartDate}
+                                onChange={(e) => setAssignmentStartDate(e.target.value || getTodayIsoLocal())}
+                                position="absolute"
+                                inset={0}
+                                opacity={0}
+                                pointerEvents="none"
+                                aria-label="Seleccionar inicio de rutina"
+                              />
+                            </Box>
+                          </FormControl>
+                          <FormControl>
+                            <FormLabel>Fin de rutina</FormLabel>
+                            <Input type="text" value={formatDateEs(assignmentEndDate)} maxW="240px" isReadOnly />
+                          </FormControl>
+                        </SimpleGrid>
+                      </Stack>
+                    </Box>
+                    {createRoutineError && (
+                      <Alert status="error" borderRadius="md">
+                        <AlertIcon />
+                        {createRoutineError}
+                      </Alert>
+                    )}
+                    <HStack spacing={3} justify="flex-end" pt={1}>
+                      <Button variant="outline" borderColor="gray.300" onClick={() => setRoutineModalStep(3)}>
+                        Volver
+                      </Button>
                       <Button
                         bg="#f97316"
                         color="white"
@@ -3124,7 +2705,7 @@ function App() {
                         isDisabled={routineBuilderDays.some((day) => (routineExercisesByDay[day.key] || []).length === 0)}
                         onClick={handleCreateOrUpdateRoutineFromSummary}
                       >
-                        {editingRoutineId ? "Guardar cambios" : "Crear rutina"}
+                        Confirmar asignación
                       </Button>
                       <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={closeCreateRoutineModal}>
                         Cancelar
@@ -3138,7 +2719,7 @@ function App() {
         </Modal>
         <Modal isOpen={routineCreateAddExerciseModalOpen} onClose={() => setRoutineCreateAddExerciseModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
-          <ModalContent maxW="620px" borderRadius="12px" overflow="hidden">
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "620px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between">
                 <Text fontWeight="700" color="gray.900">Agregar ejercicio al día</Text>
@@ -3227,7 +2808,7 @@ function App() {
           isCentered
         >
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
-          <ModalContent maxW="560px" borderRadius="12px" overflow="hidden">
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between">
                 <Text fontWeight="700" color="gray.900">Editar ejercicio</Text>
@@ -3303,7 +2884,7 @@ function App() {
         </Modal>
         <Modal isOpen={deleteRoutineDayConfirmOpen} onClose={() => setDeleteRoutineDayConfirmOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
-          <ModalContent maxW="420px" borderRadius="14px" overflow="hidden">
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
               <Stack spacing={4} align="center" textAlign="center">
                 <Box w="56px" h="56px" borderRadius="full" bg="#fee2e2" display="flex" alignItems="center" justifyContent="center">
@@ -3362,7 +2943,7 @@ function App() {
         </Modal>
         <Modal isOpen={createStudentModalOpen} onClose={() => setCreateStudentModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
-          <ModalContent maxW="560px" borderRadius="12px" overflow="hidden">
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between" align="flex-start">
                 <Stack spacing={1}>
@@ -3503,7 +3084,7 @@ function App() {
         </Modal>
         <Modal isOpen={editStudentModalOpen} onClose={() => setEditStudentModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
-          <ModalContent maxW="560px" borderRadius="12px" overflow="hidden">
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between" align="flex-start">
                 <Stack spacing={1}>
@@ -3628,7 +3209,7 @@ function App() {
           isCentered
         >
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
-          <ModalContent maxW="620px" borderRadius="12px" overflow="hidden">
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "620px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between">
                 <Text fontWeight="700" color="gray.900">Asignar rutina</Text>
@@ -3712,7 +3293,14 @@ function App() {
         </Modal>
         <Modal isOpen={assignRoutineModalOpen} onClose={closeAssignRoutineModal} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
-          <ModalContent maxW="760px" borderRadius="12px" overflow="hidden">
+          <ModalContent
+            maxW={{ base: "calc(100vw - 1rem)", md: "760px" }}
+            maxH="90vh"
+            borderRadius="12px"
+            overflow="hidden"
+            display="flex"
+            flexDirection="column"
+          >
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between">
                 <Stack spacing={0}>
@@ -3736,7 +3324,13 @@ function App() {
                 )}
               </HStack>
             </ModalHeader>
-            <ModalBody py={5}>
+            <ModalBody
+              py={5}
+              overflowY={assignRoutineStep === "existing_preview" || assignRoutineStep === "existing_list" ? "hidden" : "auto"}
+              display="flex"
+              flexDirection="column"
+              minH={0}
+            >
               {assignRoutineStep === "choice" && (
                 <Stack spacing={5}>
                   <Text color="gray.700" textAlign="center">
@@ -3833,7 +3427,7 @@ function App() {
                 </Stack>
               )}
               {assignRoutineStep === "existing_list" && (
-                <Stack spacing={3} maxH="55vh" overflowY="auto" pr={1}>
+                <Stack spacing={3} flex="1" minH={0} overflowY="auto" pr={1}>
                   {sortedRoutines.map((routine) => (
                     <Box
                       key={routine.id}
@@ -3862,7 +3456,9 @@ function App() {
                 <Stack
                   ref={assignRoutineSummaryListRef}
                   spacing={4}
-                  maxH={`${routineAssignSummaryListMaxH}px`}
+                  flex="1"
+                  minH={0}
+                  maxH={{ base: "36vh", md: `${routineAssignSummaryListMaxH}px` }}
                   overflowY="auto"
                   pr={1}
                   onWheel={handleAssignRoutineSummaryWheel}
@@ -4006,7 +3602,7 @@ function App() {
                               if ("showPicker" in picker) {
                                 (picker as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
                               } else {
-                                picker.click();
+                                (picker as HTMLInputElement).click();
                               }
                             }}
                           >
@@ -4118,7 +3714,7 @@ function App() {
           isCentered
         >
           <ModalOverlay />
-          <ModalContent maxW="700px">
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "700px" }} maxH="90vh">
             <ModalHeader>Editar ejercicio temporal</ModalHeader>
             <ModalBody>
               <Stack spacing={3}>
@@ -4177,7 +3773,7 @@ function App() {
         </Modal>
         <Modal isOpen={addExerciseDayModalOpen} onClose={() => setAddExerciseDayModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
-          <ModalContent maxW="620px" borderRadius="12px" overflow="hidden">
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "620px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between">
                 <Text fontWeight="700" color="gray.900">Agregar ejercicio al día</Text>
@@ -4256,7 +3852,7 @@ function App() {
         </Modal>
         <Modal isOpen={deleteAssignDayConfirmOpen} onClose={() => setDeleteAssignDayConfirmOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
-          <ModalContent maxW="420px" borderRadius="14px" overflow="hidden">
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
               <Stack spacing={4} align="center" textAlign="center">
                 <Box w="56px" h="56px" borderRadius="full" bg="#fee2e2" display="flex" alignItems="center" justifyContent="center">
@@ -4315,7 +3911,7 @@ function App() {
         </Modal>
         <Modal isOpen={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} isCentered>
           <ModalOverlay />
-          <ModalContent maxW="420px">
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh">
             <ModalHeader>¿Eliminar ejercicio?</ModalHeader>
             <ModalBody>
               {deleteError && (
@@ -4355,7 +3951,7 @@ function App() {
         </Modal>
         <Modal isOpen={deleteRoutineModalOpen} onClose={() => setDeleteRoutineModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
-          <ModalContent maxW="420px" borderRadius="14px" overflow="hidden">
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
               <Stack spacing={4} align="center" textAlign="center">
                 <Box w="56px" h="56px" borderRadius="full" bg="#fee2e2" display="flex" alignItems="center" justifyContent="center">
@@ -4418,7 +4014,7 @@ function App() {
         </Modal>
         <Modal isOpen={deleteAssignedRoutineModalOpen} onClose={() => setDeleteAssignedRoutineModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
-          <ModalContent maxW="420px" borderRadius="14px" overflow="hidden">
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
               <Stack spacing={4} align="center" textAlign="center">
                 <Box w="56px" h="56px" borderRadius="full" bg="#fee2e2" display="flex" alignItems="center" justifyContent="center">
@@ -4481,7 +4077,7 @@ function App() {
         </Modal>
         <Modal isOpen={replaceAssignModalOpen} onClose={() => setReplaceAssignModalOpen(false)} isCentered>
           <ModalOverlay />
-          <ModalContent maxW="560px">
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh">
             <ModalHeader>
               <Text textAlign="center">Este alumno ya tiene una rutina asignada.</Text>
               <Text textAlign="center">¿Desea eliminar la rutina y asignarle una nueva?</Text>
@@ -4526,7 +4122,7 @@ function App() {
         </Modal>
         <Modal isOpen={preAssignConflictModalOpen} onClose={() => setPreAssignConflictModalOpen(false)} isCentered>
           <ModalOverlay />
-          <ModalContent maxW="560px">
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh">
             <ModalHeader>
               <Text textAlign="center">Este alumno ya tiene una rutina asignada.</Text>
               <Text textAlign="center">¿Desea eliminar la rutina y asignarle una nueva?</Text>
@@ -4572,7 +4168,7 @@ function App() {
         </Modal>
         <Modal isOpen={deactivateModalOpen} onClose={() => setDeactivateModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
-          <ModalContent maxW="460px" borderRadius="12px" overflow="hidden">
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "460px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between" align="center">
                 <HStack spacing={3}>
@@ -4644,7 +4240,7 @@ function App() {
         </Modal>
         <Modal isOpen={activateModalOpen} onClose={() => setActivateModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
-          <ModalContent maxW="460px" borderRadius="12px" overflow="hidden">
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "460px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between" align="center">
                 <HStack spacing={3}>
@@ -4724,7 +4320,7 @@ function App() {
         <Container maxW="6xl" py={10}>
           <Stack spacing={8}>
             <HStack spacing={3}>
-              <Button alignSelf="flex-start" variant="outline" onClick={() => setView("professor")}>
+              <Button alignSelf="flex-start" variant="outline" onClick={() => goToView("professor")}>
                 Volver al panel
               </Button>
               {token && (
@@ -4935,6 +4531,7 @@ function StatCard({ title, value, helper, icon }: StatCardProps) {
 }
 
 export default App;
+
 
 
 
