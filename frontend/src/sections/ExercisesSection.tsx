@@ -29,6 +29,9 @@ function ExercisesSection({
   const listContainerRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<VariableSizeList | null>(null);
   const [listWidth, setListWidth] = useState(900);
+  const EXERCISE_ROW_GAP = 12;
+  const EXERCISE_COLLAPSED_SIZE = 98;
+  const EXERCISE_EXPANDED_SIZE = 248;
 
   useLayoutEffect(() => {
     const node = listContainerRef.current;
@@ -43,8 +46,8 @@ function ExercisesSection({
 
   const getItemSize = (index: number) => {
     const ex: any = visibleExercises[index];
-    if (!ex) return 98;
-    return expandedExercise === ex.id ? 248 : 98;
+    if (!ex) return EXERCISE_COLLAPSED_SIZE + EXERCISE_ROW_GAP;
+    return (expandedExercise === ex.id ? EXERCISE_EXPANDED_SIZE : EXERCISE_COLLAPSED_SIZE) + EXERCISE_ROW_GAP;
   };
 
   const listHeight = Math.min(
@@ -59,7 +62,7 @@ function ExercisesSection({
   const ExerciseRow = ({ index, style }: ListChildComponentProps) => {
     const ex: any = visibleExercises[index];
     return (
-      <Box style={style} px={0} py={1}>
+      <Box style={style} px={0} pt={0} pb={`${EXERCISE_ROW_GAP}px`}>
         <Box
           w="full"
           borderWidth="1px"
@@ -146,7 +149,7 @@ function ExercisesSection({
               height={listHeight}
               itemCount={visibleExercises.length}
               itemSize={getItemSize}
-              estimatedItemSize={98}
+              estimatedItemSize={EXERCISE_COLLAPSED_SIZE + EXERCISE_ROW_GAP}
               width={listWidth}
             >
               {ExerciseRow}

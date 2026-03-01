@@ -185,6 +185,33 @@ CREATE TABLE IF NOT EXISTS student_routine_assignments (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------
+-- Student routine history (rutinas terminadas)
+-- Snapshot liviano de los datos exportables del PDF + observaciones del alumno.
+-- -----------------------------------------
+CREATE TABLE IF NOT EXISTS student_routine_history (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  assignment_id BIGINT UNSIGNED NULL,
+  student_id BIGINT UNSIGNED NOT NULL,
+  student_full_name VARCHAR(150) NOT NULL,
+  routine_id BIGINT UNSIGNED NULL,
+  routine_name VARCHAR(120) NOT NULL,
+  start_date DATE NULL,
+  end_date DATE NULL,
+  completed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  objective VARCHAR(255) NOT NULL DEFAULT 'Determinante',
+  professor_notes TEXT NULL,
+  student_observations TEXT NULL, -- "Obvservaciones" en UI/PDF si se desea respetar ese título
+  weekly_total_arrows INT UNSIGNED NOT NULL DEFAULT 0,
+  snapshot_json TEXT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_history_assignment (assignment_id),
+  KEY idx_history_student_completed (student_id, completed_at),
+  KEY idx_history_completed (completed_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -----------------------------------------
 -- Admin inicial (opcional)
 -- Reemplazar <HASH_AQUI> por un hash real (bcrypt/argon2) generado en Python.
 -- -----------------------------------------

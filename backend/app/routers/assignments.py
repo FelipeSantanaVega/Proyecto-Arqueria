@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from io import BytesIO
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select, and_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from ..deps import get_db
-from ..models import Exercise, StudentRoutineAssignment, Student, Routine, RoutineDay, RoutineDayExercise
-from ..schemas import AssignmentCreate, AssignmentOut, AssignmentStatusUpdate
+from ..models import Exercise, StudentRoutineAssignment, Student, Routine, RoutineDay, RoutineDayExercise, StudentRoutineHistory
+from ..schemas import AssignmentCreate, AssignmentOut, AssignmentStatusUpdate, AssignmentHistoryOut
 from ..security import require_roles
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
@@ -22,6 +22,19 @@ router = APIRouter(prefix="/assignments", tags=["assignments"])
 def list_assignments(db: Session = Depends(get_db)):
     stmt = select(StudentRoutineAssignment).order_by(StudentRoutineAssignment.created_at.desc())
     return db.scalars(stmt).all()
+
+
+@router.get("/history", response_model=list[AssignmentHistoryOut])
+def list_assignment_history(
+    student_id: int | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_roles({"admin", "professor"})),
+):
+    stmt = select(StudentRoutineHistory).order_by(StudentRoutineHistory.completed_at.desc())
+    if student_id is not None:
+        stmt = stmt.where(StudentRoutineHistory.student_id == student_id)
+    return db.scalars(stmt.limit(limit)).all()
 
 
 @router.post("", response_model=AssignmentOut, status_code=status.HTTP_201_CREATED)
@@ -91,12 +104,81 @@ def update_assignment_status(
     _: None = Depends(require_roles({"admin", "professor"})),
 ):
     # Futuro: permitir role "student" validando ownership alumno<->usuario.
-    assignment = db.get(StudentRoutineAssignment, assignment_id)
+    stmt = (
+        select(StudentRoutineAssignment)
+        .where(StudentRoutineAssignment.id == assignment_id)
+        .options(
+            joinedload(StudentRoutineAssignment.student),
+            joinedload(StudentRoutineAssignment.routine)
+            .joinedload(Routine.days)
+            .joinedload(RoutineDay.exercises)
+            .joinedload(RoutineDayExercise.exercise),
+        )
+    )
+    assignment = db.scalars(stmt).first()
     if not assignment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asignación no encontrada")
     assignment.status = payload.status
     if payload.status == "finished" and assignment.end_date is None:
         assignment.end_date = date.today()
+
+    if payload.status == "finished":
+        effective_days, objective, professor_notes = _build_effective_days(db, assignment)
+        weekly_total = sum(
+            int(item["arrows"])
+            for day in effective_days
+            for item in day["items"]
+        )
+        snapshot = {
+            "title": "PLAN SEMANAL",
+            "student_name": assignment.student.full_name,
+            "routine_name": assignment.routine.name,
+            "objective": objective,
+            "professor_notes": professor_notes or None,
+            "student_observations": (payload.student_observations or "").strip() or None,
+            "start_date": assignment.start_date.isoformat() if assignment.start_date else None,
+            "end_date": assignment.end_date.isoformat() if assignment.end_date else None,
+            "weekly_total_arrows": weekly_total,
+            "days": effective_days,
+            "section_titles": {
+                "student_observations": "Obvservaciones",
+            },
+        }
+
+        history = db.scalars(
+            select(StudentRoutineHistory).where(StudentRoutineHistory.assignment_id == assignment.id)
+        ).first()
+        if history:
+            history.student_id = assignment.student_id
+            history.student_full_name = assignment.student.full_name
+            history.routine_id = assignment.routine_id
+            history.routine_name = assignment.routine.name
+            history.start_date = assignment.start_date
+            history.end_date = assignment.end_date
+            history.completed_at = datetime.utcnow()
+            history.objective = objective
+            history.professor_notes = professor_notes or None
+            history.student_observations = (payload.student_observations or "").strip() or None
+            history.weekly_total_arrows = weekly_total
+            history.snapshot_json = json.dumps(snapshot, ensure_ascii=False)
+        else:
+            db.add(
+                StudentRoutineHistory(
+                    assignment_id=assignment.id,
+                    student_id=assignment.student_id,
+                    student_full_name=assignment.student.full_name,
+                    routine_id=assignment.routine_id,
+                    routine_name=assignment.routine.name,
+                    start_date=assignment.start_date,
+                    end_date=assignment.end_date,
+                    completed_at=datetime.utcnow(),
+                    objective=objective,
+                    professor_notes=professor_notes or None,
+                    student_observations=(payload.student_observations or "").strip() or None,
+                    weekly_total_arrows=weekly_total,
+                    snapshot_json=json.dumps(snapshot, ensure_ascii=False),
+                )
+            )
     db.commit()
     db.refresh(assignment)
     return assignment
@@ -120,65 +202,54 @@ def _to_int(value: object) -> int | None:
         return None
 
 
-def _sanitize_filename(value: str) -> str:
-    # Permite espacios y caracteres Unicode, reemplazando solo caracteres inválidos
-    # para nombres de archivo en Windows/macOS/Linux.
-    safe = re.sub(r'[\\/:*?"<>|]+', "_", value.strip())
-    safe = re.sub(r"\s+", " ", safe).strip(" .")
-    return safe or "rutina"
-
-
-@router.get("/{assignment_id}/pdf")
-def export_assignment_pdf(
-    assignment_id: int,
-    db: Session = Depends(get_db),
-    _: None = Depends(require_roles({"admin", "professor"})),
-):
-    stmt = (
-        select(StudentRoutineAssignment)
-        .where(StudentRoutineAssignment.id == assignment_id)
-        .options(
-            joinedload(StudentRoutineAssignment.student),
-            joinedload(StudentRoutineAssignment.routine)
-            .joinedload(Routine.days)
-            .joinedload(RoutineDay.exercises)
-            .joinedload(RoutineDayExercise.exercise),
-        )
-    )
-    assignment = db.scalars(stmt).first()
-    if not assignment:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asignación no encontrada")
-
-    # Force loading exercise relation for routine day items.
-    routine = assignment.routine
-    ordered_days = sorted(routine.days, key=lambda day: day.day_number)
-    for day in ordered_days:
-        for day_exercise in day.exercises:
-            _ = day_exercise.exercise
-
+def _parse_assignment_notes(notes_value: str | None) -> tuple[str, str, dict[str, list[int]], dict[str, dict[str, dict[str, object]]]]:
+    objective = "Determinante"
+    professor_notes = ""
     temporary_exercises_by_day: dict[str, list[int]] = {}
     temporary_overrides_by_day: dict[str, dict[str, dict[str, object]]] = {}
-    if assignment.notes:
-        try:
-            parsed_notes = json.loads(assignment.notes)
-            if isinstance(parsed_notes, dict):
-                maybe_exercises = parsed_notes.get("temporary_exercises_by_day")
-                maybe_overrides = parsed_notes.get("temporary_exercise_overrides_by_day")
-                if isinstance(maybe_exercises, dict):
-                    temporary_exercises_by_day = {
-                        str(k): [int(v) for v in values if isinstance(v, int)]
-                        for k, values in maybe_exercises.items()
-                        if isinstance(values, list)
-                    }
-                if isinstance(maybe_overrides, dict):
-                    temporary_overrides_by_day = {
-                        str(k): values
-                        for k, values in maybe_overrides.items()
-                        if isinstance(values, dict)
-                    }
-        except json.JSONDecodeError:
-            # Notes can be plain text for non-temporary assignments.
-            pass
+
+    if not notes_value:
+        return objective, professor_notes, temporary_exercises_by_day, temporary_overrides_by_day
+
+    try:
+        parsed_notes = json.loads(notes_value)
+        if isinstance(parsed_notes, dict):
+            maybe_objective = parsed_notes.get("objective")
+            if isinstance(maybe_objective, str) and maybe_objective.strip():
+                objective = maybe_objective.strip()
+            maybe_professor_notes = parsed_notes.get("professor_notes")
+            if isinstance(maybe_professor_notes, str):
+                professor_notes = maybe_professor_notes
+            maybe_exercises = parsed_notes.get("temporary_exercises_by_day")
+            maybe_overrides = parsed_notes.get("temporary_exercise_overrides_by_day")
+            if isinstance(maybe_exercises, dict):
+                temporary_exercises_by_day = {
+                    str(k): [int(v) for v in values if isinstance(v, int)]
+                    for k, values in maybe_exercises.items()
+                    if isinstance(values, list)
+                }
+            if isinstance(maybe_overrides, dict):
+                temporary_overrides_by_day = {
+                    str(k): values
+                    for k, values in maybe_overrides.items()
+                    if isinstance(values, dict)
+                }
+    except json.JSONDecodeError:
+        professor_notes = notes_value
+
+    return objective, professor_notes, temporary_exercises_by_day, temporary_overrides_by_day
+
+
+def _build_effective_days(
+    db: Session,
+    assignment: StudentRoutineAssignment,
+) -> tuple[list[dict[str, object]], str, str]:
+    routine = assignment.routine
+    ordered_days = sorted(routine.days, key=lambda day: day.day_number)
+
+    objective, professor_notes, temporary_exercises_by_day, temporary_overrides_by_day = _parse_assignment_notes(
+        assignment.notes
+    )
 
     all_temporary_ids: set[int] = set()
     for ids in temporary_exercises_by_day.values():
@@ -252,6 +323,47 @@ def export_assignment_pdf(
                 )
 
         effective_days.append({"label": day_label, "items": effective_items})
+
+    return effective_days, objective, professor_notes
+
+
+def _sanitize_filename(value: str) -> str:
+    # Permite espacios y caracteres Unicode, reemplazando solo caracteres inválidos
+    # para nombres de archivo en Windows/macOS/Linux.
+    safe = re.sub(r'[\\/:*?"<>|]+', "_", value.strip())
+    safe = re.sub(r"\s+", " ", safe).strip(" .")
+    return safe or "rutina"
+
+
+@router.get("/{assignment_id}/pdf")
+def export_assignment_pdf(
+    assignment_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_roles({"admin", "professor"})),
+):
+    stmt = (
+        select(StudentRoutineAssignment)
+        .where(StudentRoutineAssignment.id == assignment_id)
+        .options(
+            joinedload(StudentRoutineAssignment.student),
+            joinedload(StudentRoutineAssignment.routine)
+            .joinedload(Routine.days)
+            .joinedload(RoutineDay.exercises)
+            .joinedload(RoutineDayExercise.exercise),
+        )
+    )
+    assignment = db.scalars(stmt).first()
+    if not assignment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asignación no encontrada")
+
+    # Force loading exercise relation for routine day items.
+    routine = assignment.routine
+    ordered_days = sorted(routine.days, key=lambda day: day.day_number)
+    for day in ordered_days:
+        for day_exercise in day.exercises:
+            _ = day_exercise.exercise
+
+    effective_days, objective, professor_notes = _build_effective_days(db, assignment)
 
     try:
         from reportlab.lib.pagesizes import A4
@@ -413,7 +525,7 @@ def export_assignment_pdf(
 
     write_line("PLAN SEMANAL", size=12, bold=False, step=5.2 * mm)
     write_line(
-        f"SEMANA: {start_label} al {end_label}    OBJETIVO: Determinante",
+        f"SEMANA: {start_label} al {end_label}    OBJETIVO: {objective}",
         size=12,
         bold=False,
         step=5.2 * mm,
@@ -424,6 +536,20 @@ def export_assignment_pdf(
         bold=False,
         step=6.3 * mm,
     )
+
+    clean_professor_notes = (professor_notes or "").strip()
+    if clean_professor_notes:
+        write_line("Notas del profesor:", size=12, bold=True, step=5.2 * mm)
+        for line in professor_notes.splitlines():
+            if not line.strip():
+                y -= line_h
+                continue
+            write_wrapped_justify(
+                line,
+                size=12,
+                leading=5.2 * mm,
+            )
+        y -= 0.8 * mm
 
     # Contenido por día.
     for idx, day in enumerate(effective_days, start=1):

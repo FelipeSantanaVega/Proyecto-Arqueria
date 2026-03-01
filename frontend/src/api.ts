@@ -11,10 +11,51 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
   }
   if (token) mergedHeaders.set('Authorization', `Bearer ${token}`)
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...rest,
-    headers: mergedHeaders,
-  })
+  const buildAlternateBase = (base: string): string | null => {
+    try {
+      const url = new URL(base)
+      if (url.hostname === '127.0.0.1') {
+        url.hostname = 'localhost'
+        return url.toString().replace(/\/$/, '')
+      }
+      if (url.hostname === 'localhost') {
+        url.hostname = '127.0.0.1'
+        return url.toString().replace(/\/$/, '')
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  const alternateBase = buildAlternateBase(API_BASE)
+  const candidateBases = [API_BASE, alternateBase].filter(Boolean) as string[]
+
+  let res: Response | null = null
+  let lastNetworkError: string | null = null
+
+  for (const base of candidateBases) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        res = await fetch(`${base}${path}`, {
+          ...rest,
+          headers: mergedHeaders,
+        })
+        lastNetworkError = null
+        break
+      } catch (err) {
+        lastNetworkError = err instanceof Error ? err.message : 'Error de red'
+        if (attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 250))
+          continue
+        }
+      }
+    }
+    if (res) break
+  }
+  if (!res) {
+    throw new Error(`Error de red al llamar ${path}: ${lastNetworkError ?? 'Error de red'}`)
+  }
 
   if (!res.ok) {
     const detail = await res.text()

@@ -7,6 +7,7 @@ import {
   Button,
   Checkbox,
   Container,
+  Collapse,
   Divider,
   FormControl,
   FormLabel,
@@ -37,6 +38,7 @@ import { keyframes } from "@emotion/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import bowIconUrl from "./assets/bow.svg";
 import archeryImg from "./assets/arqueros-logo-240.webp";
+import arquerosAndinosHeaderUrl from "./assets/arqueros-andinos-header.svg";
 import userPlusIconUrl from "./assets/user-plus.svg";
 import editIconUrl from "./assets/edit.svg";
 import notebookTabsIconUrl from "./assets/notebook-tabs.svg";
@@ -81,6 +83,171 @@ const SECTION_TO_PATH: Record<ProfSection, string> = {
 const PATH_TO_SECTION = Object.fromEntries(
   Object.entries(SECTION_TO_PATH).map(([section, path]) => [path, section]),
 ) as Record<string, ProfSection>;
+
+const WHEEL_ROW_HEIGHT = 44;
+
+function VerticalDayWheelPicker({
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  onChange: (next: number) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const snapTimeoutRef = useRef<number | null>(null);
+  const draggingRef = useRef(false);
+  const movedWhileDraggingRef = useRef(false);
+  const suppressNextClickRef = useRef(false);
+  const dragStartYRef = useRef(0);
+  const dragStartScrollTopRef = useRef(0);
+  const options = useMemo(
+    () => Array.from({ length: Math.max(0, max - min + 1) }, (_, idx) => min + idx),
+    [min, max],
+  );
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node || options.length === 0) return;
+    const index = Math.max(0, options.indexOf(value));
+    node.scrollTo({ top: index * WHEEL_ROW_HEIGHT, behavior: "smooth" });
+  }, [value, options]);
+
+  const handleSnap = () => {
+    const node = containerRef.current;
+    if (!node || options.length === 0) return;
+    const index = Math.max(0, Math.min(options.length - 1, Math.round(node.scrollTop / WHEEL_ROW_HEIGHT)));
+    const selected = options[index];
+    if (selected !== value) onChange(selected);
+    node.scrollTo({ top: index * WHEEL_ROW_HEIGHT, behavior: "smooth" });
+  };
+
+  useEffect(() => () => {
+    if (snapTimeoutRef.current !== null) window.clearTimeout(snapTimeoutRef.current);
+  }, []);
+
+  const endDrag = () => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    if (movedWhileDraggingRef.current) suppressNextClickRef.current = true;
+    const node = containerRef.current;
+    if (node) node.style.cursor = "grab";
+    handleSnap();
+  };
+
+  return (
+    <Box position="relative" w="170px" h={`${WHEEL_ROW_HEIGHT * 5}px`}>
+      <Box
+        ref={containerRef}
+        h="full"
+        overflowY="auto"
+        userSelect="none"
+        cursor="grab"
+        css={{
+          scrollSnapType: "y mandatory",
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
+        }}
+        sx={{ "&::-webkit-scrollbar": { display: "none" } }}
+        onMouseDown={(e) => {
+          const node = containerRef.current;
+          if (!node) return;
+          draggingRef.current = true;
+          movedWhileDraggingRef.current = false;
+          dragStartYRef.current = e.clientY;
+          dragStartScrollTopRef.current = node.scrollTop;
+          node.style.cursor = "grabbing";
+          e.preventDefault();
+        }}
+        onMouseMove={(e) => {
+          if (!draggingRef.current) return;
+          const node = containerRef.current;
+          if (!node) return;
+          const deltaY = e.clientY - dragStartYRef.current;
+          if (Math.abs(deltaY) > 2) movedWhileDraggingRef.current = true;
+          node.scrollTop = dragStartScrollTopRef.current - deltaY;
+          e.preventDefault();
+        }}
+        onMouseUp={endDrag}
+        onMouseLeave={endDrag}
+        onScroll={() => {
+          if (draggingRef.current) return;
+          if (snapTimeoutRef.current !== null) window.clearTimeout(snapTimeoutRef.current);
+          snapTimeoutRef.current = window.setTimeout(() => {
+            handleSnap();
+          }, 110);
+        }}
+      >
+        <Box h={`${WHEEL_ROW_HEIGHT * 2}px`} />
+        {options.map((dayNumber) => {
+          const selected = dayNumber === value;
+          return (
+            <Box
+              key={`wheel-day-${dayNumber}`}
+              h={`${WHEEL_ROW_HEIGHT}px`}
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              scrollSnapAlign="center"
+              cursor="pointer"
+              onClick={() => {
+                if (suppressNextClickRef.current) {
+                  suppressNextClickRef.current = false;
+                  return;
+                }
+                onChange(dayNumber);
+              }}
+            >
+              <Text
+                fontSize={selected ? "4xl" : "3xl"}
+                lineHeight="1"
+                fontWeight={selected ? "700" : "400"}
+                color={selected ? "black" : "gray.400"}
+                transition="all 0.15s ease"
+              >
+                {dayNumber}
+              </Text>
+            </Box>
+          );
+        })}
+        <Box h={`${WHEEL_ROW_HEIGHT * 2}px`} />
+      </Box>
+      <Box
+        pointerEvents="none"
+        position="absolute"
+        left="0"
+        right="0"
+        top={`calc(50% - ${WHEEL_ROW_HEIGHT / 2}px)`}
+        h={`${WHEEL_ROW_HEIGHT}px`}
+        borderTopWidth="1px"
+        borderBottomWidth="1px"
+        borderColor="gray.200"
+        bg="transparent"
+      />
+      <Box
+        pointerEvents="none"
+        position="absolute"
+        left="0"
+        right="0"
+        top="0"
+        h="24px"
+        bgGradient="linear(to-b, white, transparent)"
+      />
+      <Box
+        pointerEvents="none"
+        position="absolute"
+        left="0"
+        right="0"
+        bottom="0"
+        h="24px"
+        bgGradient="linear(to-t, white, transparent)"
+      />
+    </Box>
+  );
+}
 
 function getSectionFromPath(pathname: string): ProfSection {
   if (!pathname.startsWith("/profesor")) return "administrar_rutinas";
@@ -171,6 +338,87 @@ type Assignment = {
   notes?: string | null;
 };
 
+type AssignmentHistory = {
+  id: number;
+  assignment_id?: number | null;
+  student_id: number;
+  student_full_name: string;
+  routine_id?: number | null;
+  routine_name: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  completed_at: string;
+  objective: string;
+  professor_notes?: string | null;
+  student_observations?: string | null;
+  weekly_total_arrows: number;
+  snapshot_json: string;
+};
+
+type HistorySnapshotDay = {
+  day_number: number;
+  name?: string | null;
+  label?: string | null;
+  exercises?: Array<{
+    name?: string;
+  }>;
+  items?: Array<{
+    name?: string;
+  }>;
+};
+
+type HistorySnapshot = {
+  days?: HistorySnapshotDay[];
+};
+
+function parseHistorySnapshot(raw: unknown): HistorySnapshot | null {
+  try {
+    const parsed = (
+      typeof raw === "string"
+        ? JSON.parse(raw)
+        : raw
+    ) as HistorySnapshot | null;
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function getHistoryDayExerciseNames(day: HistorySnapshotDay): string[] {
+  const fromItems = Array.isArray(day.items) ? day.items : [];
+  const fromExercises = Array.isArray(day.exercises) ? day.exercises : [];
+  const source = fromItems.length ? fromItems : fromExercises;
+  return source
+    .map((ex) => (typeof ex?.name === "string" ? ex.name.trim() : ""))
+    .filter((name) => name.length > 0);
+}
+
+function normalizeHistoryItem(raw: unknown): AssignmentHistory | null {
+  if (!raw || typeof raw !== "object") return null;
+  const item = raw as Partial<AssignmentHistory> & { snapshot_json?: unknown };
+  const snapshot =
+    typeof item.snapshot_json === "string"
+      ? item.snapshot_json
+      : JSON.stringify(item.snapshot_json ?? {});
+  return {
+    id: Number(item.id ?? 0),
+    assignment_id: item.assignment_id ?? null,
+    student_id: Number(item.student_id ?? 0),
+    student_full_name: String(item.student_full_name ?? ""),
+    routine_id: item.routine_id ?? null,
+    routine_name: String(item.routine_name ?? ""),
+    start_date: item.start_date ?? null,
+    end_date: item.end_date ?? null,
+    completed_at: String(item.completed_at ?? ""),
+    objective: String(item.objective ?? ""),
+    professor_notes: item.professor_notes ?? null,
+    student_observations: item.student_observations ?? null,
+    weekly_total_arrows: Number(item.weekly_total_arrows ?? 0),
+    snapshot_json: snapshot,
+  };
+}
+
 function formatDay(day: RoutineDay) {
   return day.name || `día ${day.day_number}`;
 }
@@ -193,12 +441,44 @@ function getTodayIsoLocal(): string {
   return toIsoLocal(new Date());
 }
 
-function getRoutineEndDateFromStart(startDate: string): string {
+function addDaysIso(startDate: string, days: number): string {
   const [yearRaw, monthRaw, dayRaw] = startDate.split("-").map(Number);
   if (!yearRaw || !monthRaw || !dayRaw) return startDate;
   const date = new Date(yearRaw, monthRaw - 1, dayRaw);
-  date.setDate(date.getDate() + 6);
+  date.setDate(date.getDate() + days);
   return toIsoLocal(date);
+}
+
+function isEndAfterStart(startDate: string, endDate: string): boolean {
+  if (!startDate || !endDate) return false;
+  return endDate > startDate;
+}
+
+function getDayCountFromRange(startDate: string, endDate: string): number {
+  if (!isEndAfterStart(startDate, endDate)) return 1;
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  const diffMs = end.getTime() - start.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  return Math.max(1, diffDays + 1);
+}
+
+function buildTemporaryRoutineName(baseName: string, documentNumber: string, startDate: string): string {
+  const cleanedBase = (baseName || "Rutina temporal").trim();
+  const stamp = new Date()
+    .toISOString()
+    .replace(/[-:TZ.]/g, "")
+    .slice(0, 14);
+  const composed = `${cleanedBase} · tmp ${documentNumber} ${startDate} ${stamp}`;
+  return composed.length > 120 ? composed.slice(0, 120) : composed;
+}
+
+function getHistoryRoutineDisplayName(name: string | null | undefined): string {
+  const raw = (name || "").trim();
+  const cleaned = raw
+    .replace(/\s*[·|-]?\s*tmp\s+\S+\s+\d{4}-\d{2}-\d{2}\s+\d{14}\s*$/i, "")
+    .trim();
+  return cleaned || "Rutina temporal";
 }
 
 function parseRoleFromToken(rawToken: string | null): string | null {
@@ -243,6 +523,7 @@ function App() {
   const [editingRoutineId, setEditingRoutineId] = useState<number | null>(null);
   const [routineName, setRoutineName] = useState("");
   const [routineDayCount, setRoutineDayCount] = useState(1);
+  const [routineDayInitialLimit, setRoutineDayInitialLimit] = useState(1);
   const [routineDayCursor, setRoutineDayCursor] = useState(0);
   const [routineExercisesByDay, setRoutineExercisesByDay] = useState<Record<string, number[]>>({});
   const [routineExerciseSearch, setRoutineExerciseSearch] = useState("");
@@ -264,11 +545,14 @@ function App() {
   const [createRoutineError, setCreateRoutineError] = useState<string | null>(null);
   const [assignRoutineModalOpen, setAssignRoutineModalOpen] = useState(false);
   const [assignRoutineStudent, setAssignRoutineStudent] = useState<Student | null>(null);
-  const [assignRoutineStep, setAssignRoutineStep] = useState<"choice" | "existing_list" | "existing_preview" | "existing_dates">("choice");
+  const [assignRoutineStep, setAssignRoutineStep] = useState<"choice" | "existing_list" | "existing_days" | "existing_preview" | "existing_dates">("choice");
   const [selectedRoutineToAssign, setSelectedRoutineToAssign] = useState<Routine | null>(null);
   const [assignRoutineError, setAssignRoutineError] = useState<string | null>(null);
   const [assignRoutineLoading, setAssignRoutineLoading] = useState(false);
   const [assignmentStartDate, setAssignmentStartDate] = useState<string>(getTodayIsoLocal());
+  const [assignmentEndDate, setAssignmentEndDate] = useState<string>(addDaysIso(getTodayIsoLocal(), 1));
+  const [assignmentProfessorNotes, setAssignmentProfessorNotes] = useState("");
+  const [assignmentObjective, setAssignmentObjective] = useState("");
   const [replaceAssignModalOpen, setReplaceAssignModalOpen] = useState(false);
   const [replaceAssignLoading, setReplaceAssignLoading] = useState(false);
   const [replaceAssignError, setReplaceAssignError] = useState<string | null>(null);
@@ -282,6 +566,7 @@ function App() {
   } | null>(null);
   const [routineAssignStudentId, setRoutineAssignStudentId] = useState<number | null>(null);
   const [routineAssignDayCount, setRoutineAssignDayCount] = useState(1);
+  const [routineAssignDayInitialLimit, setRoutineAssignDayInitialLimit] = useState(1);
   const [routineAssignExercisesByDay, setRoutineAssignExercisesByDay] = useState<Record<string, number[]>>({});
   const [routineAssignExerciseOverridesByDay, setRoutineAssignExerciseOverridesByDay] = useState<
     Record<string, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>>
@@ -304,6 +589,7 @@ function App() {
   const routineCreateAddExerciseListRef = useRef<HTMLDivElement | null>(null);
   const assignRoutineSummaryListRef = useRef<HTMLDivElement | null>(null);
   const assignmentStartDatePickerRef = useRef<HTMLInputElement | null>(null);
+  const assignmentEndDatePickerRef = useRef<HTMLInputElement | null>(null);
   const [createName, setCreateName] = useState("");
   const [createArrows, setCreateArrows] = useState<number | "">("");
   const [createDistance, setCreateDistance] = useState<number | "">("");
@@ -346,10 +632,23 @@ function App() {
   const [activateStudent, setActivateStudent] = useState<Student | null>(null);
   const [activateLoading, setActivateLoading] = useState(false);
   const [activateError, setActivateError] = useState<string | null>(null);
+  const [studentHistoryModalOpen, setStudentHistoryModalOpen] = useState(false);
+  const [studentHistoryTarget, setStudentHistoryTarget] = useState<Student | null>(null);
+  const [studentHistorySearch, setStudentHistorySearch] = useState("");
+  const [studentHistoryLoading, setStudentHistoryLoading] = useState(false);
+  const [studentHistoryError, setStudentHistoryError] = useState<string | null>(null);
+  const [studentHistoryItems, setStudentHistoryItems] = useState<AssignmentHistory[]>([]);
+  const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(null);
+  const [studentHistoryExportLoadingId, setStudentHistoryExportLoadingId] = useState<number | null>(null);
   const [deleteAssignedRoutineModalOpen, setDeleteAssignedRoutineModalOpen] = useState(false);
   const [deleteAssignedRoutineTarget, setDeleteAssignedRoutineTarget] = useState<Assignment | null>(null);
   const [deleteAssignedRoutineLoading, setDeleteAssignedRoutineLoading] = useState(false);
   const [deleteAssignedRoutineError, setDeleteAssignedRoutineError] = useState<string | null>(null);
+  const [saveAssignmentModalOpen, setSaveAssignmentModalOpen] = useState(false);
+  const [saveAssignmentTargetId, setSaveAssignmentTargetId] = useState<number | null>(null);
+  const [saveAssignmentStudentObservations, setSaveAssignmentStudentObservations] = useState("");
+  const [saveAssignmentError, setSaveAssignmentError] = useState<string | null>(null);
+  const [saveAssignmentLoadingId, setSaveAssignmentLoadingId] = useState<number | null>(null);
   const [exportAssignmentLoadingId, setExportAssignmentLoadingId] = useState<number | null>(null);
   const [preAssignConflictModalOpen, setPreAssignConflictModalOpen] = useState(false);
   const [preAssignConflictStudent, setPreAssignConflictStudent] = useState<Student | null>(null);
@@ -650,16 +949,21 @@ function App() {
     [students],
   );
   const activeStudents = useMemo(() => sortedStudents.filter((s) => s.is_active), [sortedStudents]);
+  const activeAssignmentStudentIds = useMemo(
+    () => new Set(assignments.filter((a) => a.status === "active").map((a) => a.student_id)),
+    [assignments],
+  );
   const adminAssignableStudents = useMemo(() => {
+    const withoutActiveRoutine = activeStudents.filter((student) => !activeAssignmentStudentIds.has(student.id));
     const term = adminAssignSearch.trim().toLowerCase();
-    if (!term) return activeStudents;
-    return activeStudents.filter((student) => {
+    if (!term) return withoutActiveRoutine;
+    return withoutActiveRoutine.filter((student) => {
       const byName = student.full_name.toLowerCase().includes(term);
       const byDoc = student.document_number.toLowerCase().includes(term);
       const byContact = (student.contact || "").toLowerCase().includes(term);
       return byName || byDoc || byContact;
     });
-  }, [activeStudents, adminAssignSearch]);
+  }, [activeStudents, activeAssignmentStudentIds, adminAssignSearch]);
   const studentNameById = useMemo(() => new Map(students.map((s) => [s.id, s.full_name])), [students]);
   const routineNameById = useMemo(() => new Map(routines.map((r) => [r.id, r.name])), [routines]);
   const activeAssignments = useMemo(
@@ -669,6 +973,60 @@ function App() {
         .sort((a, b) => (a.start_date || "").localeCompare(b.start_date || "")),
     [assignments],
   );
+  const filteredStudentHistoryItems = useMemo(() => {
+    const term = studentHistorySearch.trim().toLowerCase();
+    if (!term) return studentHistoryItems;
+    return studentHistoryItems.filter((item) => {
+      const byRoutine = (item.routine_name || "").toLowerCase().includes(term);
+      const byObjective = (item.objective || "").toLowerCase().includes(term);
+      return byRoutine || byObjective;
+    });
+  }, [studentHistoryItems, studentHistorySearch]);
+
+  const handleExportHistoryPdf = useCallback(async (historyItem: AssignmentHistory) => {
+    if (!token) return;
+    if (!historyItem.assignment_id) {
+      setStudentHistoryError("No se puede exportar PDF para este registro de historial.");
+      return;
+    }
+    setStudentHistoryError(null);
+    setStudentHistoryExportLoadingId(historyItem.id);
+    try {
+      const response = await fetch(`${API_BASE}/assignments/${historyItem.assignment_id}/pdf`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        let detail = "No se pudo generar el PDF";
+        try {
+          const body = (await response.json()) as { detail?: string };
+          if (body?.detail) detail = body.detail;
+        } catch {
+          // ignore parse error
+        }
+        throw new Error(detail);
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename=\"([^\"]+)\"/i);
+      const filename = match?.[1] || `historial_${historyItem.id}.pdf`;
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "No se pudo exportar el PDF del historial";
+      setStudentHistoryError(msg);
+    } finally {
+      setStudentHistoryExportLoadingId(null);
+    }
+  }, [token]);
 
   const routineBuilderDays = useMemo(
     () =>
@@ -701,13 +1059,13 @@ function App() {
   const routineModalMinHeight = routineModalStep === 0
     ? 320
     : routineModalStep === 1
-      ? 220
+      ? (routineAssignStudentId && !editingRoutineId ? 320 : 360)
       : routineModalStep === 2
         ? 300
         : routineModalStep === 4
-          ? 260
+          ? 460
         : Math.min(380 + Math.max(0, routineDayCount - 1) * 55, 760);
-  const routineModalMaxBodyHeight = routineModalStep === 0 ? 420 : routineModalStep === 1 ? 420 : routineModalStep === 2 ? 620 : routineModalStep === 4 ? 420 : 680;
+  const routineModalMaxBodyHeight = routineModalStep === 0 ? 420 : routineModalStep === 1 ? 640 : routineModalStep === 2 ? 620 : routineModalStep === 4 ? 760 : 680;
   const actionIconButtonSize = ACTION_ICON_BUTTON_SIZE;
   const actionIconSize = ACTION_ICON_SIZE;
   const filteredRoutineExercises = useMemo(() => {
@@ -727,6 +1085,12 @@ function App() {
     220,
     Math.min(420, 220 + (routineAssignDayCount - 1) * 50),
   );
+  const assignSelectedRangeDayCount = useMemo(
+    () => Math.max(1, Math.min(7, getDayCountFromRange(assignmentStartDate, assignmentEndDate))),
+    [assignmentStartDate, assignmentEndDate],
+  );
+  const assignPreviewExcessDays = Math.max(0, routineAssignDayCount - assignSelectedRangeDayCount);
+  const isAssignPreviewOverDayLimit = assignRoutineStep === "existing_preview" && assignPreviewExcessDays > 0;
 
   useLayoutEffect(() => {
     if (!createRoutineModalOpen || !routineStepRef.current) return;
@@ -772,11 +1136,6 @@ function App() {
     return () => observer.disconnect();
   }, [createRoutineModalOpen, routineModalStep, routineDayCursor, routineModalMinHeight, routineModalMaxBodyHeight]);
 
-  const assignmentEndDate = useMemo(
-    () => getRoutineEndDateFromStart(assignmentStartDate),
-    [assignmentStartDate],
-  );
-
   const getRoutineDayArrows = (day: RoutineDay) =>
     day.exercises.reduce((sum, dayExercise) => {
       if (typeof dayExercise.arrows_override === "number") return sum + dayExercise.arrows_override;
@@ -807,8 +1166,11 @@ function App() {
 
   const resetAssignRoutineDraft = useCallback(() => {
     setRoutineAssignDayCount(1);
+    setRoutineAssignDayInitialLimit(1);
     setRoutineAssignExercisesByDay({});
     setRoutineAssignExerciseOverridesByDay({});
+    setAssignmentProfessorNotes("");
+    setAssignmentObjective("");
     setAddExerciseDayModalOpen(false);
     setAddExerciseTargetDayKey(null);
     setAddExerciseSearch("");
@@ -836,6 +1198,7 @@ function App() {
     setAssignRoutineError(null);
     setAssignRoutineLoading(false);
     setAssignmentStartDate(getTodayIsoLocal());
+    setAssignmentEndDate(addDaysIso(getTodayIsoLocal(), 1));
     resetAssignRoutineDraft();
     setAssignRoutineModalOpen(true);
   }, [assignments, resetAssignRoutineDraft]);
@@ -848,6 +1211,7 @@ function App() {
     setAssignRoutineError(null);
     setAssignRoutineLoading(false);
     setAssignmentStartDate(getTodayIsoLocal());
+    setAssignmentEndDate(addDaysIso(getTodayIsoLocal(), 1));
     resetAssignRoutineDraft();
     setReplaceAssignError(null);
   }, [resetAssignRoutineDraft]);
@@ -870,6 +1234,7 @@ function App() {
       setAssignRoutineError(null);
       setAssignRoutineLoading(false);
       setAssignmentStartDate(getTodayIsoLocal());
+      setAssignmentEndDate(addDaysIso(getTodayIsoLocal(), 1));
       resetAssignRoutineDraft();
       setAssignRoutineModalOpen(true);
     } catch (err) {
@@ -930,6 +1295,7 @@ function App() {
     setEditingRoutineId(null);
     setRoutineName("");
     setRoutineDayCount(1);
+    setRoutineDayInitialLimit(1);
     setRoutineDayCursor(0);
     setRoutineExercisesByDay({});
     setRoutineExerciseSearch("");
@@ -954,6 +1320,7 @@ function App() {
     setCreateRoutineModalOpen(false);
     setRoutineModalStep(0);
     setRoutineDayCount(1);
+    setRoutineDayInitialLimit(1);
     setRoutineDayCursor(0);
     setRoutineExercisesByDay({});
     setRoutineExerciseSearch("");
@@ -1000,7 +1367,9 @@ function App() {
     }
     setEditingRoutineId(routine.id);
     setRoutineName(routine.name);
-    setRoutineDayCount(Math.max(1, Math.min(7, sortedDays.length || 1)));
+    const initialDays = Math.max(1, Math.min(7, sortedDays.length || 1));
+    setRoutineDayCount(initialDays);
+    setRoutineDayInitialLimit(initialDays);
     setRoutineExercisesByDay(exercisesByDay);
     setRoutineCreateExerciseOverridesByDay(overridesByDay);
     setRoutineDayCursor(0);
@@ -1048,6 +1417,10 @@ function App() {
   };
 
   const handleCreateOrUpdateRoutineFromSummary = async () => {
+    if (routineAssignStudentId && !isEndAfterStart(assignmentStartDate, assignmentEndDate)) {
+      setCreateRoutineError("La fecha de fin debe ser posterior a la fecha de inicio.");
+      return;
+    }
     if (!token) {
       setCreateRoutineError("Sesión inválida.");
       return;
@@ -1056,7 +1429,14 @@ function App() {
       setCreateRoutineLoading(true);
       setCreateRoutineError(null);
       const payload = {
-        name: routineName.trim(),
+        name:
+          routineAssignStudentId && !editingRoutineId
+            ? buildTemporaryRoutineName(
+                routineName.trim(),
+                students.find((student) => student.id === routineAssignStudentId)?.document_number || String(routineAssignStudentId),
+                assignmentStartDate,
+              )
+            : routineName.trim(),
         description: null,
         is_active: true,
         is_template: editingRoutineId
@@ -1091,14 +1471,21 @@ function App() {
         });
         setRoutines((prev) => [...prev, createdRoutine]);
         if (routineAssignStudentId) {
-          await tryCreateAssignment({
+          const assignResult = await tryCreateAssignment({
             student_id: routineAssignStudentId,
             routine_id: createdRoutine.id,
             start_date: assignmentStartDate,
             end_date: assignmentEndDate,
             status: "active",
-            notes: "Asignación desde creación rápida de rutina",
+            notes: JSON.stringify({
+              source: "quick_create_assignment",
+              objective: assignmentObjective.trim() || "Determinante",
+              professor_notes: assignmentProfessorNotes.trim() || null,
+            }),
           });
+          if (!assignResult.ok && !assignResult.conflict) {
+            await cleanupTemporaryRoutineIfOrphan(createdRoutine.id);
+          }
         }
       }
       closeCreateRoutineModal();
@@ -1130,7 +1517,7 @@ function App() {
   };
 
   const handleAddRoutineDay = () => {
-    if (routineDayCount >= 7) return;
+    if (routineDayCount >= routineDayInitialLimit) return;
     const nextCount = routineDayCount + 1;
     const nextKey = `day_${nextCount}`;
     setRoutineDayCount(nextCount);
@@ -1271,6 +1658,7 @@ function App() {
     if (!assignRoutineStudent) return;
     setRoutineAssignStudentId(assignRoutineStudent.id);
     setAssignmentStartDate(getTodayIsoLocal());
+    setAssignmentEndDate(addDaysIso(getTodayIsoLocal(), 1));
     setAssignRoutineModalOpen(false);
     setAssignRoutineStep("choice");
     setSelectedRoutineToAssign(null);
@@ -1288,11 +1676,12 @@ function App() {
     setAssignRoutineError(null);
     setAssignRoutineLoading(false);
     setAssignmentStartDate(getTodayIsoLocal());
+    setAssignmentEndDate(addDaysIso(getTodayIsoLocal(), 1));
     setAssignRoutineModalOpen(true);
   };
 
   const handleChooseExistingRoutineList = () => {
-    setAssignRoutineStep("existing_list");
+    setAssignRoutineStep("existing_days");
     setSelectedRoutineToAssign(null);
     setAssignRoutineError(null);
     resetAssignRoutineDraft();
@@ -1306,7 +1695,7 @@ function App() {
     status: "active";
     notes?: string;
   }) => {
-    if (!token) return;
+    if (!token) return { ok: false, conflict: false };
     try {
       await apiFetch("/assignments", {
         method: "POST",
@@ -1318,20 +1707,33 @@ function App() {
       setPendingAssignPayload(null);
       setReplaceAssignModalOpen(false);
       setReplaceAssignError(null);
-      return true;
+      return { ok: true, conflict: false };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al asignar rutina";
       if (msg.includes("ya tiene una rutina activa")) {
         setPendingAssignPayload(payload);
         setReplaceAssignError(null);
         setReplaceAssignModalOpen(true);
+        return { ok: false, conflict: true };
       } else {
         setAssignRoutineError(msg);
         setCreateRoutineError(msg);
+        return { ok: false, conflict: false };
       }
-      return false;
     }
   };
+
+  const cleanupTemporaryRoutineIfOrphan = useCallback(async (routineId: number | null | undefined) => {
+    if (!token || !routineId) return;
+    const routine = routines.find((value) => value.id === routineId);
+    if (routine && routine.is_template !== false) return;
+    try {
+      await apiFetch(`/routines/${routineId}`, { method: "DELETE", token });
+      setRoutines((prev) => prev.filter((value) => value.id !== routineId));
+    } catch {
+      // Ignorar: puede estar asignada/referenciada o ya eliminada.
+    }
+  }, [token, routines, setRoutines]);
 
   const handleSelectRoutineToAssign = (routine: Routine) => {
     const orderedDays = [...routine.days].sort((a, b) => a.day_number - b.day_number);
@@ -1354,11 +1756,25 @@ function App() {
       });
     });
     setSelectedRoutineToAssign(routine);
+    const totalDays = Math.max(1, Math.min(7, orderedDays.length || 1));
+    const selectedDaysFromDates = Math.max(1, Math.min(7, getDayCountFromRange(assignmentStartDate, assignmentEndDate)));
+    const selectedDays = totalDays;
+    const initialLimitDays = Math.max(selectedDays, selectedDaysFromDates);
     setAssignRoutineStep("existing_preview");
     setAssignRoutineError(null);
-    setRoutineAssignDayCount(Math.max(1, Math.min(7, orderedDays.length || 1)));
-    setRoutineAssignExercisesByDay(nextExercisesByDay);
-    setRoutineAssignExerciseOverridesByDay(nextOverridesByDay);
+    const limitedExercises: Record<string, number[]> = {};
+    const limitedOverrides: Record<string, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
+    for (let idx = 1; idx <= selectedDays; idx += 1) {
+      const key = `day_${idx}`;
+      limitedExercises[key] = [...(nextExercisesByDay[key] || [])];
+      if (nextOverridesByDay[key]) {
+        limitedOverrides[key] = { ...nextOverridesByDay[key] };
+      }
+    }
+    setRoutineAssignDayCount(selectedDays);
+    setRoutineAssignDayInitialLimit(initialLimitDays);
+    setRoutineAssignExercisesByDay(limitedExercises);
+    setRoutineAssignExerciseOverridesByDay(limitedOverrides);
     setDeleteAssignDayConfirmOpen(false);
     setDeleteAssignDayTargetNumber(null);
   };
@@ -1416,7 +1832,7 @@ function App() {
   };
 
   const addAssignRoutineDay = () => {
-    if (routineAssignDayCount >= 7) return;
+    if (routineAssignDayCount >= routineAssignDayInitialLimit) return;
     const nextCount = routineAssignDayCount + 1;
     const nextKey = `day_${nextCount}`;
     setRoutineAssignDayCount(nextCount);
@@ -1476,22 +1892,78 @@ function App() {
 
   const handleAssignExistingRoutine = async () => {
     if (!token || !assignRoutineStudent || !selectedRoutineToAssign) return;
+    if (!isEndAfterStart(assignmentStartDate, assignmentEndDate)) {
+      setAssignRoutineError("La fecha de fin debe ser posterior a la fecha de inicio.");
+      return;
+    }
     setAssignRoutineLoading(true);
     setAssignRoutineError(null);
     try {
-      const ok = await tryCreateAssignment({
+      const validExerciseIds = new Set(exercises.map((ex) => ex.id));
+      const sanitizedDays = routineAssignBuilderDays
+        .map((day) => {
+          const uniqueIds = Array.from(new Set((routineAssignExercisesByDay[day.key] || []).filter((id) => validExerciseIds.has(id))));
+          const sanitizedExercises = uniqueIds.map((exerciseId, idx) => ({
+            exercise_id: exerciseId,
+            sort_order: idx + 1,
+            arrows_override: routineAssignExerciseOverridesByDay[day.key]?.[exerciseId]?.arrows_override ?? null,
+            distance_override_m: routineAssignExerciseOverridesByDay[day.key]?.[exerciseId]?.distance_override_m ?? null,
+            notes: routineAssignExerciseOverridesByDay[day.key]?.[exerciseId]?.description_override ?? null,
+          }));
+          return {
+            day_number: day.dayNumber,
+            name: day.label,
+            exercises: sanitizedExercises,
+          };
+        })
+        .filter((day) => Number.isInteger(day.day_number) && day.day_number >= 1 && day.day_number <= 7);
+
+      if (!sanitizedDays.length) {
+        setAssignRoutineError("No se pudo preparar la rutina temporal. Verifica los días y ejercicios seleccionados.");
+        setAssignRoutineLoading(false);
+        return;
+      }
+
+      const temporaryRoutinePayload = {
+        name: buildTemporaryRoutineName(
+          selectedRoutineToAssign.name,
+          assignRoutineStudent.document_number || String(assignRoutineStudent.id),
+          assignmentStartDate,
+        ),
+        description: selectedRoutineToAssign.description || null,
+        is_active: true,
+        is_template: false,
+        days: sanitizedDays,
+      };
+      const createdTemporaryRoutine = await apiFetch<Routine>("/routines", {
+        method: "POST",
+        token,
+        body: JSON.stringify(temporaryRoutinePayload),
+      });
+      setRoutines((prev) => [...prev, createdTemporaryRoutine]);
+
+      const assignResult = await tryCreateAssignment({
         student_id: assignRoutineStudent.id,
-        routine_id: selectedRoutineToAssign.id,
+        routine_id: createdTemporaryRoutine.id,
         start_date: assignmentStartDate,
         end_date: assignmentEndDate,
         status: "active",
         notes: JSON.stringify({
+          source: "existing_template_assignment",
+          source_routine_id: selectedRoutineToAssign.id,
+          assigned_routine_id: createdTemporaryRoutine.id,
+          objective: assignmentObjective.trim() || "Determinante",
+          professor_notes: assignmentProfessorNotes.trim() || null,
           temporary_day_count: routineAssignDayCount,
           temporary_exercises_by_day: routineAssignExercisesByDay,
           temporary_exercise_overrides_by_day: routineAssignExerciseOverridesByDay,
         }),
       });
-      if (ok) closeAssignRoutineModal();
+      if (assignResult.ok) {
+        closeAssignRoutineModal();
+      } else if (!assignResult.conflict) {
+        await cleanupTemporaryRoutineIfOrphan(createdTemporaryRoutine.id);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al asignar rutina";
       setAssignRoutineError(msg);
@@ -1531,6 +2003,14 @@ function App() {
     }
   };
 
+  const handleCancelReplaceAndAssign = useCallback(async () => {
+    const pendingRoutineId = pendingAssignPayload?.routine_id ?? null;
+    setReplaceAssignModalOpen(false);
+    setReplaceAssignError(null);
+    setPendingAssignPayload(null);
+    await cleanupTemporaryRoutineIfOrphan(pendingRoutineId);
+  }, [pendingAssignPayload, cleanupTemporaryRoutineIfOrphan]);
+
   const handleDeleteAssignedRoutineConfirm = async () => {
     if (!token || !deleteAssignedRoutineTarget) return;
     setDeleteAssignedRoutineLoading(true);
@@ -1548,6 +2028,62 @@ function App() {
       setDeleteAssignedRoutineLoading(false);
     }
   };
+
+  const handleSaveAssignmentToHistory = useCallback(async (assignmentId: number) => {
+    if (!token) return;
+    setSaveAssignmentLoadingId(assignmentId);
+    setSaveAssignmentError(null);
+    try {
+      await apiFetch<Assignment>(`/assignments/${assignmentId}/status`, {
+        method: "PATCH",
+        token,
+        body: JSON.stringify({
+          status: "finished",
+          student_observations: saveAssignmentStudentObservations.trim() || null,
+        }),
+      });
+      const assignmentsData = await apiFetch<Assignment[]>("/assignments", { token });
+      setAssignments(assignmentsData);
+      setSaveAssignmentModalOpen(false);
+      setSaveAssignmentTargetId(null);
+      setSaveAssignmentStudentObservations("");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "No se pudo guardar en historial";
+      setSaveAssignmentError(msg);
+    } finally {
+      setSaveAssignmentLoadingId(null);
+    }
+  }, [token, saveAssignmentStudentObservations, setAssignments]);
+
+  const openSaveAssignmentModal = useCallback((assignmentId: number) => {
+    setSaveAssignmentError(null);
+    setSaveAssignmentTargetId(assignmentId);
+    setSaveAssignmentStudentObservations("");
+    setSaveAssignmentModalOpen(true);
+  }, []);
+
+  const openStudentHistoryModal = useCallback(async (student: Student) => {
+    if (!token) return;
+    setStudentHistoryTarget(student);
+    setStudentHistorySearch("");
+    setStudentHistoryError(null);
+    setStudentHistoryItems([]);
+    setExpandedHistoryId(null);
+    setStudentHistoryModalOpen(true);
+    setStudentHistoryLoading(true);
+    try {
+      const history = await apiFetch<AssignmentHistory[]>(`/assignments/history?student_id=${student.id}`, { token });
+      const normalized = (Array.isArray(history) ? history : [])
+        .map((entry) => normalizeHistoryItem(entry))
+        .filter((entry): entry is AssignmentHistory => entry !== null && entry.id > 0);
+      setStudentHistoryItems(normalized);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "No se pudo cargar el historial";
+      setStudentHistoryError(msg);
+    } finally {
+      setStudentHistoryLoading(false);
+    }
+  }, [token]);
 
   const handleExportAssignmentPdf = useCallback(async (assignmentId: number) => {
     if (!token) return;
@@ -1785,8 +2321,7 @@ function App() {
       <>
         <Grid templateColumns={{ base: "1fr", md: "250px 1fr" }} minH="100vh" bg="#f9fafb">
           <GridItem
-            borderRight={{ base: "none", md: "1px solid" }}
-            borderColor="gray.200"
+            borderRight={{ base: "none", md: "1px solid rgba(148, 163, 184, 0.45)" }}
             bg="white"
             p={{ base: 5, md: 4 }}
             position={{ base: "static", md: "sticky" }}
@@ -1797,12 +2332,24 @@ function App() {
             flexDirection="column"
           >
             <Stack spacing={5} h="full">
-              <Heading size="lg" color="gray.900" lineHeight="1.1" px={2} pt={2}>
-                Panel
-                <br />
-                profesor
-              </Heading>
-              <Stack spacing={1}>
+              <Box px={2} pt={2}>
+                <Box
+                  h="108px"
+                  w="320px"
+                  bg="black"
+                  sx={{
+                    WebkitMaskImage: `url(${arquerosAndinosHeaderUrl})`,
+                    WebkitMaskRepeat: "no-repeat",
+                    WebkitMaskPosition: "left center",
+                    WebkitMaskSize: "contain",
+                    maskImage: `url(${arquerosAndinosHeaderUrl})`,
+                    maskRepeat: "no-repeat",
+                    maskPosition: "left center",
+                    maskSize: "contain",
+                  }}
+                />
+              </Box>
+              <Stack spacing={1} mt="10px">
                 <HStack
                   px={3}
                   py={3}
@@ -1930,13 +2477,43 @@ function App() {
               <Box flex="1" />
               <Box borderTop="1px solid" borderColor="gray.200" pt={3}>
                 <HStack px={2} py={2.5} borderRadius="md" bg={profSection === "perfil" ? "orange.50" : "transparent"} cursor="pointer" _hover={{ bg: "gray.50" }} onClick={() => goToSection("perfil")}>
-                  <Text fontSize="17px">◉</Text>
+                  <Box
+                    as="svg"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    boxSize="17px"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    color={profSection === "perfil" ? "orange.600" : "gray.700"}
+                  >
+                    <path d="M18 20a6 6 0 0 0-12 0" />
+                    <circle cx="12" cy="10" r="4" />
+                    <circle cx="12" cy="12" r="10" />
+                  </Box>
                   <Text fontSize="17px" color={profSection === "perfil" ? "orange.600" : "gray.700"} fontWeight={profSection === "perfil" ? "600" : "500"}>
                     Perfil
                   </Text>
                 </HStack>
                 <HStack px={2} py={2.5} borderRadius="md" cursor="pointer" _hover={{ bg: "gray.50" }} onClick={handleLogout}>
-                  <Text fontSize="17px">↪</Text>
+                  <Box
+                    as="svg"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    boxSize="17px"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    color="gray.700"
+                  >
+                    <path d="m16 17 5-5-5-5" />
+                    <path d="M21 12H9" />
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  </Box>
                   <Text fontSize="17px" color="gray.700" fontWeight="500">
                     Cerrar sesión
                   </Text>
@@ -1961,6 +2538,8 @@ function App() {
                     exerciseNameById={exerciseNameById}
                     actionIconButtonSize={actionIconButtonSize}
                     exportAssignmentLoadingId={exportAssignmentLoadingId}
+                    saveAssignmentLoadingId={saveAssignmentLoadingId}
+                    openSaveAssignmentModal={openSaveAssignmentModal}
                     handleExportAssignmentPdf={handleExportAssignmentPdf}
                     openAdminAssignModal={openAdminAssignModal}
                     setDeleteAssignedRoutineError={setDeleteAssignedRoutineError}
@@ -2022,6 +2601,7 @@ function App() {
                     setDeactivateError={setDeactivateError}
                     setDeactivateModalOpen={setDeactivateModalOpen}
                     openAssignRoutineModal={openAssignRoutineModal}
+                    openStudentHistoryModal={openStudentHistoryModal}
                     setActivateStudent={setActivateStudent}
                     setActivateError={setActivateError}
                     setActivateModalOpen={setActivateModalOpen}
@@ -2254,7 +2834,7 @@ function App() {
               h={routineModalStep === 3 ? "auto" : routineModalBodyHeight ? `${routineModalBodyHeight}px` : `${routineModalMinHeight}px`}
               transition="height 0.3s ease"
               overflowX="hidden"
-              overflowY={routineModalStep === 3 ? "visible" : "hidden"}
+              overflowY={routineModalStep === 3 ? "visible" : (routineModalStep === 1 || routineModalStep === 4) ? "auto" : "hidden"}
             >
               <Box px={6} py={6}>
                 {routineModalStep === 0 && (
@@ -2297,7 +2877,7 @@ function App() {
                         setRoutineDayCursor(0);
                         setRoutineExerciseSearch("");
                         setCreateRoutineError(null);
-                        setRoutineModalStep(2);
+                        setRoutineModalStep(1);
                       }}
                     />
                   </FormControl>
@@ -2318,7 +2898,7 @@ function App() {
                         setRoutineDayCursor(0);
                         setRoutineExerciseSearch("");
                         setCreateRoutineError(null);
-                        setRoutineModalStep(2);
+                        setRoutineModalStep(1);
                       }}
                     >
                       Siguiente
@@ -2327,6 +2907,168 @@ function App() {
                       Cancelar
                     </Button>
                   </HStack>
+                  </Stack>
+                )}
+                {routineModalStep === 1 && (
+                  <Stack ref={routineStepRef} spacing={5} animation={`${routineStepSlide} 0.3s ease`} px={2} pt={2} pb={4} w="full" maxW="700px" mx="auto">
+                    {routineAssignStudentId && !editingRoutineId ? (
+                      <>
+                        <Stack spacing={1} align="center" textAlign="center">
+                          <Heading size="md">Selecciona el rango de la rutina</Heading>
+                        </Stack>
+                        <Box borderWidth="1px" borderColor="gray.200" borderRadius="10px" p={4}>
+                          <Stack spacing={4}>
+                            <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+                              <FormControl>
+                                <FormLabel>Inicio de rutina</FormLabel>
+                                <Box position="relative" maxW="240px">
+                                  <Input type="text" value={formatDateEs(assignmentStartDate)} pr="44px" isReadOnly />
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    position="absolute"
+                                    right="6px"
+                                    top="50%"
+                                    transform="translateY(-50%)"
+                                    minW="30px"
+                                    h="30px"
+                                    p={0}
+                                    aria-label="Abrir calendario inicio"
+                                    onClick={() => {
+                                      const picker = assignmentStartDatePickerRef.current;
+                                      if (!picker) return;
+                                      if ("showPicker" in picker) {
+                                        (picker as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+                                      } else {
+                                        (picker as HTMLInputElement).click();
+                                      }
+                                    }}
+                                  >
+                                    <Box as="svg" viewBox="0 0 24 24" boxSize="16px" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <rect width="18" height="18" x="3" y="4" rx="2" />
+                                      <path d="M16 2v4" />
+                                      <path d="M8 2v4" />
+                                      <path d="M3 10h18" />
+                                    </Box>
+                                  </Button>
+                                  <Input
+                                    ref={assignmentStartDatePickerRef}
+                                    type="date"
+                                    value={assignmentStartDate}
+                                    onChange={(e) => {
+                                      const nextStart = e.target.value || getTodayIsoLocal();
+                                      setAssignmentStartDate(nextStart);
+                                      if (!isEndAfterStart(nextStart, assignmentEndDate)) {
+                                        setAssignmentEndDate(addDaysIso(nextStart, 1));
+                                      }
+                                    }}
+                                    position="absolute"
+                                    inset={0}
+                                    opacity={0}
+                                    pointerEvents="none"
+                                    aria-label="Seleccionar inicio de rutina"
+                                  />
+                                </Box>
+                              </FormControl>
+                              <FormControl>
+                                <FormLabel>Fin de rutina</FormLabel>
+                                <Box position="relative" maxW="240px">
+                                  <Input type="text" value={formatDateEs(assignmentEndDate)} pr="44px" isReadOnly />
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    position="absolute"
+                                    right="6px"
+                                    top="50%"
+                                    transform="translateY(-50%)"
+                                    minW="30px"
+                                    h="30px"
+                                    p={0}
+                                    aria-label="Abrir calendario fin"
+                                    onClick={() => {
+                                      const picker = assignmentEndDatePickerRef.current;
+                                      if (!picker) return;
+                                      if ("showPicker" in picker) {
+                                        (picker as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+                                      } else {
+                                        (picker as HTMLInputElement).click();
+                                      }
+                                    }}
+                                  >
+                                    <Box as="svg" viewBox="0 0 24 24" boxSize="16px" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <rect width="18" height="18" x="3" y="4" rx="2" />
+                                      <path d="M16 2v4" />
+                                      <path d="M8 2v4" />
+                                      <path d="M3 10h18" />
+                                    </Box>
+                                  </Button>
+                                  <Input
+                                    ref={assignmentEndDatePickerRef}
+                                    type="date"
+                                    value={assignmentEndDate}
+                                    min={addDaysIso(assignmentStartDate, 1)}
+                                    onChange={(e) => {
+                                      const nextEnd = e.target.value || addDaysIso(assignmentStartDate, 1);
+                                      if (!isEndAfterStart(assignmentStartDate, nextEnd)) {
+                                        setAssignmentEndDate(addDaysIso(assignmentStartDate, 1));
+                                        return;
+                                      }
+                                      setAssignmentEndDate(nextEnd);
+                                    }}
+                                    position="absolute"
+                                    inset={0}
+                                    opacity={0}
+                                    pointerEvents="none"
+                                    aria-label="Seleccionar fin de rutina"
+                                  />
+                                </Box>
+                              </FormControl>
+                            </SimpleGrid>
+                            <Text textAlign="center" color="gray.700" fontWeight="600">
+                              Días de rutina: {getDayCountFromRange(assignmentStartDate, assignmentEndDate)}
+                            </Text>
+                          </Stack>
+                        </Box>
+                      </>
+                    ) : (
+                      <Stack spacing={5} align="center" textAlign="center" py={2}>
+                        <Heading size="md">Elige cuántos días tendrá la rutina</Heading>
+                        <VerticalDayWheelPicker
+                          value={routineDayCount}
+                          min={1}
+                          max={7}
+                          onChange={setRoutineDayCount}
+                        />
+                      </Stack>
+                    )}
+                    <HStack spacing={3} justify="flex-end" wrap="wrap">
+                      <Button variant="outline" borderColor="gray.300" onClick={() => setRoutineModalStep(0)}>
+                        Volver
+                      </Button>
+                      <Button
+                        bg="#f97316"
+                        color="white"
+                        _hover={{ bg: "#ea580c" }}
+                        _active={{ bg: "#c2410c" }}
+                        isDisabled={(routineAssignStudentId && !editingRoutineId) ? !isEndAfterStart(assignmentStartDate, assignmentEndDate) : false}
+                        onClick={() => {
+                          const calculatedDays = routineAssignStudentId && !editingRoutineId
+                            ? Math.max(1, Math.min(7, getDayCountFromRange(assignmentStartDate, assignmentEndDate)))
+                            : Math.max(1, Math.min(7, routineDayCount));
+                          setRoutineDayCount(calculatedDays);
+                          setRoutineDayInitialLimit(calculatedDays);
+                          setRoutineDayCursor(0);
+                          setRoutineExerciseSearch("");
+                          setCreateRoutineError(null);
+                          setRoutineModalStep(2);
+                        }}
+                      >
+                        Siguiente
+                      </Button>
+                      <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={closeCreateRoutineModal}>
+                        Cancelar
+                      </Button>
+                    </HStack>
                   </Stack>
                 )}
                 {routineModalStep === 2 && (
@@ -2412,7 +3154,7 @@ function App() {
                     </Alert>
                   )}
                   <HStack spacing={3} justify="flex-end" p={4}>
-                    <Button variant="outline" borderColor="gray.300" onClick={() => setRoutineModalStep(0)}>
+                    <Button variant="outline" borderColor="gray.300" onClick={() => setRoutineModalStep(1)}>
                       Volver
                     </Button>
                     <Button
@@ -2559,7 +3301,7 @@ function App() {
                           </HStack>
                         </Box>
                       ))}
-                      {routineDayCount < 7 && (
+                      {routineDayCount < routineDayInitialLimit && (
                         <HStack justify="center">
                           <Button
                             variant="ghost"
@@ -2620,70 +3362,28 @@ function App() {
                   </Stack>
                 )}
                 {routineModalStep === 4 && routineAssignStudentId && !editingRoutineId && (
-                  <Stack ref={routineStepRef} spacing={4} animation={`${routineStepSlide} 0.3s ease`} px={4} py={2}>
+                  <Stack ref={routineStepRef} spacing={4} animation={`${routineStepSlide} 0.3s ease`} px={4} py={4}>
                     <Box borderWidth="1px" borderColor="gray.200" borderRadius="10px" p={4}>
                       <Stack spacing={4}>
-                        <Text fontWeight="600" color="gray.800">Selecciona la semana de la rutina</Text>
-                        <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
-                          <FormControl>
-                            <FormLabel>Inicio de rutina</FormLabel>
-                            <Box position="relative" maxW="240px">
-                              <Input type="text" value={formatDateEs(assignmentStartDate)} pr="44px" isReadOnly />
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                position="absolute"
-                                right="6px"
-                                top="50%"
-                                transform="translateY(-50%)"
-                                minW="30px"
-                                h="30px"
-                                p={0}
-                                aria-label="Abrir calendario"
-                                onClick={() => {
-                                  const picker = assignmentStartDatePickerRef.current;
-                                  if (!picker) return;
-                                  if ("showPicker" in picker) {
-                                    (picker as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
-                                  } else {
-                                    (picker as HTMLInputElement).click();
-                                  }
-                                }}
-                              >
-                                <Box
-                                  as="svg"
-                                  viewBox="0 0 24 24"
-                                  boxSize="16px"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <rect width="18" height="18" x="3" y="4" rx="2" />
-                                  <path d="M16 2v4" />
-                                  <path d="M8 2v4" />
-                                  <path d="M3 10h18" />
-                                </Box>
-                              </Button>
-                              <Input
-                                ref={assignmentStartDatePickerRef}
-                                type="date"
-                                value={assignmentStartDate}
-                                onChange={(e) => setAssignmentStartDate(e.target.value || getTodayIsoLocal())}
-                                position="absolute"
-                                inset={0}
-                                opacity={0}
-                                pointerEvents="none"
-                                aria-label="Seleccionar inicio de rutina"
-                              />
-                            </Box>
-                          </FormControl>
-                          <FormControl>
-                            <FormLabel>Fin de rutina</FormLabel>
-                            <Input type="text" value={formatDateEs(assignmentEndDate)} maxW="240px" isReadOnly />
-                          </FormControl>
-                        </SimpleGrid>
+                        <FormControl>
+                          <FormLabel>Objetivo</FormLabel>
+                          <Input
+                            value={assignmentObjective}
+                            onChange={(e) => setAssignmentObjective(e.target.value)}
+                            placeholder="Ej: Determinante"
+                            maxW="320px"
+                          />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel>Notas del profesor (opcional)</FormLabel>
+                          <Textarea
+                            value={assignmentProfessorNotes}
+                            onChange={(e) => setAssignmentProfessorNotes(e.target.value)}
+                            placeholder="Escribe observaciones para el alumno..."
+                            minH="110px"
+                            resize="vertical"
+                          />
+                        </FormControl>
                       </Stack>
                     </Box>
                     {createRoutineError && (
@@ -3204,6 +3904,220 @@ function App() {
           </ModalContent>
         </Modal>
         <Modal
+          isOpen={studentHistoryModalOpen}
+          onClose={() => {
+            setStudentHistoryModalOpen(false);
+            setStudentHistoryTarget(null);
+            setStudentHistorySearch("");
+            setStudentHistoryError(null);
+            setStudentHistoryItems([]);
+            setExpandedHistoryId(null);
+          }}
+          isCentered
+        >
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "760px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
+            <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
+              <HStack justify="space-between" align="center">
+                <Stack spacing={0}>
+                  <Text fontWeight="700" color="gray.900">Historial del alumno</Text>
+                  <Text fontSize="sm" color="gray.500">
+                    {studentHistoryTarget ? `${studentHistoryTarget.full_name} · DNI ${studentHistoryTarget.document_number}` : ""}
+                  </Text>
+                </Stack>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  color="gray.400"
+                  _hover={{ bg: "gray.100", color: "gray.700" }}
+                  onClick={() => {
+                    setStudentHistoryModalOpen(false);
+                    setStudentHistoryTarget(null);
+                    setStudentHistorySearch("");
+                    setStudentHistoryError(null);
+                    setStudentHistoryItems([]);
+                    setExpandedHistoryId(null);
+                  }}
+                >
+                  ×
+                </Button>
+              </HStack>
+            </ModalHeader>
+            <ModalBody py={4}>
+              <Stack spacing={4}>
+                <InputGroup>
+                  <InputLeftElement pointerEvents="none" color="gray.500">
+                    <SearchIcon boxSize={3.5} />
+                  </InputLeftElement>
+                  <Input
+                    value={studentHistorySearch}
+                    onChange={(e) => setStudentHistorySearch(e.target.value)}
+                    placeholder="Buscar por rutina, objetivo o notas"
+                    borderRadius="8px"
+                    borderColor="gray.300"
+                    _hover={{ borderColor: "gray.400" }}
+                    _focus={{ borderColor: "gray.500", bg: "white" }}
+                  />
+                </InputGroup>
+                {studentHistoryLoading ? (
+                  <HStack py={6} justify="center">
+                    <Spinner size="sm" />
+                    <Text color="gray.500" fontSize="sm">Cargando historial...</Text>
+                  </HStack>
+                ) : (
+                  <Stack spacing={3} maxH="56vh" overflowY="auto" pr={1}>
+                    {filteredStudentHistoryItems.map((item) => {
+                      const isExpanded = expandedHistoryId === item.id;
+                      const snapshot = parseHistorySnapshot(item.snapshot_json);
+                      const days = (Array.isArray(snapshot?.days) ? snapshot.days : [])
+                        .filter((day): day is HistorySnapshotDay => Boolean(day) && typeof day === "object")
+                        .map((day, idx) => ({
+                          day_number: Number(day.day_number ?? idx + 1),
+                          name: day.name ?? null,
+                          label: day.label ?? null,
+                          exercises: Array.isArray(day.exercises) ? day.exercises : [],
+                          items: Array.isArray(day.items) ? day.items : [],
+                        }));
+                      return (
+                        <Box
+                          key={item.id}
+                          borderWidth="1px"
+                          borderColor="gray.200"
+                          borderRadius="12px"
+                          bg="white"
+                          overflow="hidden"
+                        >
+                          <Box
+                            p={4}
+                            cursor="pointer"
+                            _hover={{ bg: "gray.50" }}
+                            onClick={() => setExpandedHistoryId((prev) => (prev === item.id ? null : item.id))}
+                          >
+                            <HStack justify="space-between" align="start">
+                              <Stack spacing={1}>
+                                <Text fontWeight="700" color="gray.900">{getHistoryRoutineDisplayName(item.routine_name)}</Text>
+                                <Text fontSize="sm" color="gray.500">
+                                  {formatDateEs(item.start_date)} a {formatDateEs(item.end_date)}
+                                </Text>
+                                <Text fontSize="sm" color="gray.600">Objetivo: {item.objective || "-"}</Text>
+                              </Stack>
+                              <Stack spacing={0} align="end">
+                                <Text fontSize="xs" color="gray.500">{isExpanded ? "Ocultar" : "Ver detalle"}</Text>
+                                <HStack spacing={2}>
+                                  <Tag size="sm" borderRadius="full" bg="gray.100" color="gray.700">
+                                    Flechas: {item.weekly_total_arrows}
+                                  </Tag>
+                                  <Button
+                                    size="xs"
+                                    variant="outline"
+                                    borderColor="gray.300"
+                                    color="gray.700"
+                                    _hover={{ bg: "gray.50", borderColor: "gray.400" }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void handleExportHistoryPdf(item);
+                                    }}
+                                    isLoading={studentHistoryExportLoadingId === item.id}
+                                    isDisabled={studentHistoryExportLoadingId !== null && studentHistoryExportLoadingId !== item.id}
+                                    aria-label="Exportar PDF de historial"
+                                  >
+                                    <HStack spacing={1}>
+                                      <Box as="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" boxSize="14px" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M12 17V3" />
+                                        <path d="m6 11 6 6 6-6" />
+                                        <path d="M19 21H5" />
+                                      </Box>
+                                      <Text fontSize="xs" fontWeight="600">PDF</Text>
+                                    </HStack>
+                                  </Button>
+                                </HStack>
+                              </Stack>
+                            </HStack>
+                          </Box>
+                          <Collapse in={isExpanded} animateOpacity>
+                            <Box
+                              px={4}
+                              pb={4}
+                              borderTopWidth="1px"
+                              borderColor="gray.100"
+                              maxH={{ base: "34vh", md: "38vh" }}
+                              overflowY="auto"
+                              pr={3}
+                            >
+                              <Stack spacing={3} pt={3}>
+                                {item.professor_notes && (
+                                  <Box>
+                                    <Text fontSize="sm" fontWeight="600" color="gray.800">Notas del profesor</Text>
+                                    <Text fontSize="sm" color="gray.600" whiteSpace="pre-wrap">{item.professor_notes}</Text>
+                                  </Box>
+                                )}
+                                {item.student_observations && (
+                                  <Box>
+                                    <Text fontSize="sm" fontWeight="600" color="gray.800">Observaciones del alumno</Text>
+                                    <Text fontSize="sm" color="gray.600" whiteSpace="pre-wrap">{item.student_observations}</Text>
+                                  </Box>
+                                )}
+                                {!!days.length && (
+                                  <Stack spacing={2}>
+                                    <Text fontSize="sm" fontWeight="600" color="gray.800">Días de la rutina</Text>
+                                    {days.map((day) => (
+                                      <Box key={`history-day-${item.id}-${day.day_number}`} pl={3} borderLeft="2px solid" borderColor="gray.200">
+                                        <Text fontSize="sm" fontWeight="600" color="gray.700">
+                                          {day.label || day.name || `Día ${day.day_number}`}
+                                        </Text>
+                                        <Stack as="ul" spacing={1} mt={1}>
+                                          {getHistoryDayExerciseNames(day).map((exerciseName, idx) => (
+                                            <HStack as="li" key={`history-day-${item.id}-${day.day_number}-ex-${idx}`} align="start" spacing={2}>
+                                              <Box w="5px" h="5px" mt="7px" borderRadius="full" bg="orange.400" flexShrink={0} />
+                                              <Text fontSize="sm" color="gray.600">{exerciseName}</Text>
+                                            </HStack>
+                                          ))}
+                                        </Stack>
+                                      </Box>
+                                    ))}
+                                  </Stack>
+                                )}
+                              </Stack>
+                            </Box>
+                          </Collapse>
+                        </Box>
+                      );
+                    })}
+                    {!filteredStudentHistoryItems.length && !studentHistoryError && (
+                      <Text color="gray.600" textAlign="center" py={6}>No hay rutinas en historial para este alumno.</Text>
+                    )}
+                  </Stack>
+                )}
+                {studentHistoryError && (
+                  <Alert status="error" borderRadius="md">
+                    <AlertIcon />
+                    {studentHistoryError}
+                  </Alert>
+                )}
+              </Stack>
+            </ModalBody>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
+              <Button
+                bg="white"
+                color="black"
+                borderColor="gray.300"
+                borderWidth="1px"
+                _hover={{ bg: "gray.100" }}
+                onClick={() => {
+                  setStudentHistoryModalOpen(false);
+                  setStudentHistoryTarget(null);
+                  setStudentHistorySearch("");
+                  setStudentHistoryError(null);
+                  setStudentHistoryItems([]);
+                  setExpandedHistoryId(null);
+                }}
+              >
+                Cerrar
+              </Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+        <Modal
           isOpen={adminAssignModalOpen}
           onClose={closeAdminAssignModal}
           isCentered
@@ -3311,9 +4225,10 @@ function App() {
                     </Text>
                   </Text>
                   {assignRoutineStep === "choice" && <Text fontSize="sm" color="gray.500">Paso 2 de 4: Selecciona el método de asignación</Text>}
-                  {assignRoutineStep === "existing_list" && <Text fontSize="sm" color="gray.500">Selecciona una rutina existente de la lista para asignarla.</Text>}
+                  {assignRoutineStep === "existing_days" && <Text fontSize="sm" color="gray.500">Paso 3: Selecciona inicio y fin de rutina</Text>}
+                  {assignRoutineStep === "existing_list" && <Text fontSize="sm" color="gray.500">Paso 4: Selecciona una rutina pre cargada.</Text>}
                   {assignRoutineStep === "existing_preview" && <Text fontSize="sm" color="gray.500">Paso 4: Configurar ejercicios y días</Text>}
-                  {assignRoutineStep === "existing_dates" && <Text fontSize="sm" color="gray.500">Paso 5: Seleccionar fechas de la rutina</Text>}
+                  {assignRoutineStep === "existing_dates" && <Text fontSize="sm" color="gray.500">Paso 5: Seleccionar fechas y notas</Text>}
                 </Stack>
                 {assignRoutineStep === "existing_preview" || assignRoutineStep === "existing_dates" ? (
                   <Button variant="ghost" size="sm" color="gray.500" _hover={{ bg: "gray.100", color: "gray.700" }} aria-label="Configuración">
@@ -3452,6 +4367,119 @@ function App() {
                   {!sortedRoutines.length && <Text color="gray.600">No hay rutinas creadas.</Text>}
                 </Stack>
               )}
+              {assignRoutineStep === "existing_days" && (
+                <Stack spacing={5} py={2}>
+                  <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+                    <FormControl>
+                      <FormLabel>Inicio de rutina</FormLabel>
+                      <Box position="relative" maxW="240px">
+                        <Input type="text" value={formatDateEs(assignmentStartDate)} pr="44px" isReadOnly />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          position="absolute"
+                          right="6px"
+                          top="50%"
+                          transform="translateY(-50%)"
+                          minW="30px"
+                          h="30px"
+                          p={0}
+                          aria-label="Abrir calendario inicio"
+                          onClick={() => {
+                            const picker = assignmentStartDatePickerRef.current;
+                            if (!picker) return;
+                            if ("showPicker" in picker) {
+                              (picker as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+                            } else {
+                              (picker as HTMLInputElement).click();
+                            }
+                          }}
+                        >
+                          <Box as="svg" viewBox="0 0 24 24" boxSize="16px" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect width="18" height="18" x="3" y="4" rx="2" />
+                            <path d="M16 2v4" />
+                            <path d="M8 2v4" />
+                            <path d="M3 10h18" />
+                          </Box>
+                        </Button>
+                        <Input
+                          ref={assignmentStartDatePickerRef}
+                          type="date"
+                          value={assignmentStartDate}
+                          onChange={(e) => {
+                            const nextStart = e.target.value || getTodayIsoLocal();
+                            setAssignmentStartDate(nextStart);
+                            if (!isEndAfterStart(nextStart, assignmentEndDate)) {
+                              setAssignmentEndDate(addDaysIso(nextStart, 1));
+                            }
+                          }}
+                          position="absolute"
+                          inset={0}
+                          opacity={0}
+                          pointerEvents="none"
+                          aria-label="Seleccionar inicio de rutina"
+                        />
+                      </Box>
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>Fin de rutina</FormLabel>
+                      <Box position="relative" maxW="240px">
+                        <Input type="text" value={formatDateEs(assignmentEndDate)} pr="44px" isReadOnly />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          position="absolute"
+                          right="6px"
+                          top="50%"
+                          transform="translateY(-50%)"
+                          minW="30px"
+                          h="30px"
+                          p={0}
+                          aria-label="Abrir calendario fin"
+                          onClick={() => {
+                            const picker = assignmentEndDatePickerRef.current;
+                            if (!picker) return;
+                            if ("showPicker" in picker) {
+                              (picker as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+                            } else {
+                              (picker as HTMLInputElement).click();
+                            }
+                          }}
+                        >
+                          <Box as="svg" viewBox="0 0 24 24" boxSize="16px" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect width="18" height="18" x="3" y="4" rx="2" />
+                            <path d="M16 2v4" />
+                            <path d="M8 2v4" />
+                            <path d="M3 10h18" />
+                          </Box>
+                        </Button>
+                        <Input
+                          ref={assignmentEndDatePickerRef}
+                          type="date"
+                          value={assignmentEndDate}
+                          min={addDaysIso(assignmentStartDate, 1)}
+                          onChange={(e) => {
+                            const nextEnd = e.target.value || addDaysIso(assignmentStartDate, 1);
+                            if (!isEndAfterStart(assignmentStartDate, nextEnd)) {
+                              setAssignmentEndDate(addDaysIso(assignmentStartDate, 1));
+                              return;
+                            }
+                            setAssignmentEndDate(nextEnd);
+                          }}
+                          position="absolute"
+                          inset={0}
+                          opacity={0}
+                          pointerEvents="none"
+                          aria-label="Seleccionar fin de rutina"
+                        />
+                      </Box>
+                    </FormControl>
+                  </SimpleGrid>
+                  <Text color="gray.700" fontWeight="600">
+                    Días de rutina: {getDayCountFromRange(assignmentStartDate, assignmentEndDate)}
+                  </Text>
+                </Stack>
+              )}
               {assignRoutineStep === "existing_preview" && selectedRoutineToAssign && (
                 <Stack
                   ref={assignRoutineSummaryListRef}
@@ -3465,7 +4493,13 @@ function App() {
                   sx={{ overscrollBehaviorY: "contain" }}
                 >
                   {routineAssignBuilderDays.map((day) => (
-                    <Box key={`assign-summary-${day.key}`} borderWidth="1px" borderColor="gray.200" borderRadius="10px" p={4}>
+                    <Box
+                      key={`assign-summary-${day.key}`}
+                      borderWidth="1px"
+                      borderColor={isAssignPreviewOverDayLimit ? "red.300" : "gray.200"}
+                      borderRadius="10px"
+                      p={4}
+                    >
                       <Text color="gray.800" fontWeight="semibold" mb={2}>
                         {day.label}
                       </Text>
@@ -3562,8 +4596,23 @@ function App() {
                       </HStack>
                     </Box>
                   ))}
+                  {isAssignPreviewOverDayLimit && (
+                    <Box
+                      borderWidth="1px"
+                      borderColor="red.300"
+                      bg="red.50"
+                      color="red.700"
+                      borderRadius="10px"
+                      px={4}
+                      py={3}
+                    >
+                      <Text fontSize="sm" fontWeight="600">
+                        La rutina ha excedido el máximo de días establecidos. Por favor, elimine al menos {assignPreviewExcessDays} día{assignPreviewExcessDays === 1 ? "" : "s"} para continuar.
+                      </Text>
+                    </Box>
+                  )}
                   <HStack justify="center">
-                    {routineAssignDayCount < 7 && (
+                    {routineAssignDayCount < routineAssignDayInitialLimit && (
                       <Button
                         variant="ghost"
                         color="gray.600"
@@ -3579,67 +4628,25 @@ function App() {
               {assignRoutineStep === "existing_dates" && selectedRoutineToAssign && (
                 <Box borderWidth="1px" borderColor="gray.200" borderRadius="10px" p={4}>
                   <Stack spacing={4}>
-                    <Text fontWeight="600" color="gray.800">Selecciona la semana de la rutina</Text>
-                    <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
-                      <FormControl>
-                        <FormLabel>Inicio de rutina</FormLabel>
-                        <Box position="relative" maxW="240px">
-                          <Input type="text" value={formatDateEs(assignmentStartDate)} pr="44px" isReadOnly />
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            position="absolute"
-                            right="6px"
-                            top="50%"
-                            transform="translateY(-50%)"
-                            minW="30px"
-                            h="30px"
-                            p={0}
-                            aria-label="Abrir calendario"
-                            onClick={() => {
-                              const picker = assignmentStartDatePickerRef.current;
-                              if (!picker) return;
-                              if ("showPicker" in picker) {
-                                (picker as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
-                              } else {
-                                (picker as HTMLInputElement).click();
-                              }
-                            }}
-                          >
-                            <Box
-                              as="svg"
-                              viewBox="0 0 24 24"
-                              boxSize="16px"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <rect width="18" height="18" x="3" y="4" rx="2" />
-                              <path d="M16 2v4" />
-                              <path d="M8 2v4" />
-                              <path d="M3 10h18" />
-                            </Box>
-                          </Button>
-                          <Input
-                            ref={assignmentStartDatePickerRef}
-                            type="date"
-                            value={assignmentStartDate}
-                            onChange={(e) => setAssignmentStartDate(e.target.value || getTodayIsoLocal())}
-                            position="absolute"
-                            inset={0}
-                            opacity={0}
-                            pointerEvents="none"
-                            aria-label="Seleccionar inicio de rutina"
-                          />
-                        </Box>
-                      </FormControl>
-                      <FormControl>
-                        <FormLabel>Fin de rutina</FormLabel>
-                        <Input type="text" value={formatDateEs(assignmentEndDate)} maxW="240px" isReadOnly />
-                      </FormControl>
-                    </SimpleGrid>
+                    <FormControl>
+                      <FormLabel>Objetivo</FormLabel>
+                      <Input
+                        value={assignmentObjective}
+                        onChange={(e) => setAssignmentObjective(e.target.value)}
+                        placeholder="Ej: Determinante"
+                        maxW="320px"
+                      />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>Notas del profesor (opcional)</FormLabel>
+                      <Textarea
+                        value={assignmentProfessorNotes}
+                        onChange={(e) => setAssignmentProfessorNotes(e.target.value)}
+                        placeholder="Escribe observaciones para el alumno..."
+                        minH="110px"
+                        resize="vertical"
+                      />
+                    </FormControl>
                   </Stack>
                 </Box>
               )}
@@ -3661,13 +4668,13 @@ function App() {
                   </Button>
                 )}
                 {assignRoutineStep === "existing_list" && (
-                  <Button variant="outline" borderColor="gray.300" onClick={() => setAssignRoutineStep("choice")}>
+                  <Button variant="outline" borderColor="gray.300" onClick={() => setAssignRoutineStep("existing_days")}>
                     Volver
                   </Button>
                 )}
-                {assignRoutineStep === "existing_preview" && (
+                {assignRoutineStep === "existing_days" && (
                   <>
-                    <Button variant="outline" borderColor="gray.300" onClick={() => setAssignRoutineStep("existing_list")}>
+                    <Button variant="outline" borderColor="gray.300" onClick={() => setAssignRoutineStep("choice")}>
                       Volver
                     </Button>
                     <Button
@@ -3675,7 +4682,28 @@ function App() {
                       color="white"
                       _hover={{ bg: "#ea580c" }}
                       _active={{ bg: "#c2410c" }}
-                      onClick={() => setAssignRoutineStep("existing_dates")}
+                      isDisabled={!isEndAfterStart(assignmentStartDate, assignmentEndDate)}
+                      onClick={() => setAssignRoutineStep("existing_list")}
+                    >
+                      Siguiente
+                    </Button>
+                  </>
+                )}
+                {assignRoutineStep === "existing_preview" && (
+                  <>
+                    <Button variant="outline" borderColor="gray.300" onClick={() => setAssignRoutineStep("existing_list")}>
+                      Volver
+                    </Button>
+                    <Button
+                      bg={isAssignPreviewOverDayLimit ? "gray.300" : "#f97316"}
+                      color={isAssignPreviewOverDayLimit ? "gray.600" : "white"}
+                      _hover={isAssignPreviewOverDayLimit ? { bg: "gray.300" } : { bg: "#ea580c" }}
+                      _active={isAssignPreviewOverDayLimit ? { bg: "gray.300" } : { bg: "#c2410c" }}
+                      isDisabled={isAssignPreviewOverDayLimit}
+                      onClick={() => {
+                        if (isAssignPreviewOverDayLimit) return;
+                        setAssignRoutineStep("existing_dates");
+                      }}
                     >
                       Siguiente
                     </Button>
@@ -4012,6 +5040,76 @@ function App() {
             </ModalBody>
           </ModalContent>
         </Modal>
+        <Modal
+          isOpen={saveAssignmentModalOpen}
+          onClose={() => {
+            setSaveAssignmentModalOpen(false);
+            setSaveAssignmentTargetId(null);
+            setSaveAssignmentStudentObservations("");
+            setSaveAssignmentError(null);
+          }}
+          isCentered
+        >
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
+            <ModalHeader borderBottomWidth="1px" borderColor="gray.100">
+              Observaciones de alumno
+            </ModalHeader>
+            <ModalBody py={5}>
+              <Stack spacing={4}>
+                <Textarea
+                  value={saveAssignmentStudentObservations}
+                  onChange={(e) => setSaveAssignmentStudentObservations(e.target.value)}
+                  placeholder="Escribe aquí las observaciones del alumno..."
+                  minH="140px"
+                  resize="vertical"
+                  borderColor="gray.300"
+                  _hover={{ borderColor: "gray.400" }}
+                  _focus={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                />
+                {saveAssignmentError && (
+                  <Alert status="error" borderRadius="md">
+                    <AlertIcon />
+                    {saveAssignmentError}
+                  </Alert>
+                )}
+              </Stack>
+            </ModalBody>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.100">
+              <HStack spacing={3}>
+                <Button
+                  variant="outline"
+                  borderColor="gray.300"
+                  bg="white"
+                  _hover={{ bg: "gray.50" }}
+                  onClick={() => {
+                    setSaveAssignmentModalOpen(false);
+                    setSaveAssignmentTargetId(null);
+                    setSaveAssignmentStudentObservations("");
+                    setSaveAssignmentError(null);
+                  }}
+                  isDisabled={saveAssignmentLoadingId !== null}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  bg="#f97316"
+                  color="white"
+                  _hover={{ bg: "#ea580c" }}
+                  _active={{ bg: "#c2410c" }}
+                  onClick={() => {
+                    if (saveAssignmentTargetId === null) return;
+                    void handleSaveAssignmentToHistory(saveAssignmentTargetId);
+                  }}
+                  isLoading={saveAssignmentTargetId !== null && saveAssignmentLoadingId === saveAssignmentTargetId}
+                  isDisabled={saveAssignmentTargetId === null}
+                >
+                  Guardar en historial
+                </Button>
+              </HStack>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
         <Modal isOpen={deleteAssignedRoutineModalOpen} onClose={() => setDeleteAssignedRoutineModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
@@ -4075,7 +5173,7 @@ function App() {
             </ModalBody>
           </ModalContent>
         </Modal>
-        <Modal isOpen={replaceAssignModalOpen} onClose={() => setReplaceAssignModalOpen(false)} isCentered>
+        <Modal isOpen={replaceAssignModalOpen} onClose={() => { void handleCancelReplaceAndAssign(); }} isCentered>
           <ModalOverlay />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh">
             <ModalHeader>
@@ -4108,10 +5206,7 @@ function App() {
                   color="white"
                   _hover={{ bg: "gray.800" }}
                   _active={{ bg: "gray.900" }}
-                  onClick={() => {
-                    setReplaceAssignModalOpen(false);
-                    setPendingAssignPayload(null);
-                  }}
+                  onClick={() => { void handleCancelReplaceAndAssign(); }}
                   isDisabled={replaceAssignLoading}
                 >
                   Cancelar

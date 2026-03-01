@@ -42,7 +42,9 @@ Endpoints de prueba:
   - `POST /students` crea alumno.
   - `POST /routines` crea rutina con días y ejercicios anidados.
   - `GET /routines` lista rutinas con días/ejercicios.
-  - `POST /assignments` asigna una rutina a un alumno.
+- `POST /assignments` asigna una rutina a un alumno.
+- `PATCH /assignments/{id}/status` permite finalizar/pausar/reactivar una asignación.
+- `GET /assignments/history` devuelve historial de rutinas terminadas (snapshot).
 
 Ejemplos rápidos (JSON):
 ```json
@@ -77,6 +79,13 @@ Ejemplos rápidos (JSON):
   "student_id": 1,
   "routine_id": 1,
   "status": "active"
+}
+```
+```json
+// Marcar rutina como terminada y guardar observaciones del alumno
+{
+  "status": "finished",
+  "student_observations": "Obvservaciones: me costó mantener anclaje en el Día 3."
 }
 ```
 

@@ -148,6 +148,7 @@ class AssignmentCreate(BaseModel):
 
 class AssignmentStatusUpdate(BaseModel):
     status: str = Field(pattern="^(active|paused|finished)$")
+    student_observations: Optional[str] = None
 
 
 class AssignmentOut(BaseModel):
@@ -159,6 +160,26 @@ class AssignmentOut(BaseModel):
     end_date: Optional[date]
     status: str
     notes: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+class AssignmentHistoryOut(BaseModel):
+    id: int
+    assignment_id: Optional[int]
+    student_id: int
+    student_full_name: str
+    routine_id: Optional[int]
+    routine_name: str
+    start_date: Optional[date]
+    end_date: Optional[date]
+    completed_at: datetime
+    objective: str
+    professor_notes: Optional[str]
+    student_observations: Optional[str]
+    weekly_total_arrows: int
+    snapshot_json: str
 
     class Config:
         from_attributes = True

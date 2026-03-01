@@ -233,3 +233,35 @@ class StudentRoutineAssignment(Base):
 
     student: Mapped[Student] = relationship(back_populates="assignments")
     routine: Mapped[Routine] = relationship(back_populates="assignments")
+
+
+class StudentRoutineHistory(Base):
+    __tablename__ = "student_routine_history"
+    __table_args__ = (
+        UniqueConstraint("assignment_id", name="uq_history_assignment"),
+        Index("idx_history_student_completed", "student_id", "completed_at"),
+        Index("idx_history_completed", "completed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    assignment_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    student_full_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    routine_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    routine_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    completed_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
+    objective: Mapped[str] = mapped_column(String(255), nullable=False, default="Determinante")
+    professor_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    student_observations: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    weekly_total_arrows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    snapshot_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )

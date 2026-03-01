@@ -19,6 +19,7 @@ function StudentsSection({
   setDeactivateError,
   setDeactivateModalOpen,
   openAssignRoutineModal,
+  openStudentHistoryModal,
   setActivateStudent,
   setActivateError,
   setActivateModalOpen,
@@ -39,6 +40,10 @@ function StudentsSection({
   const inactiveListRef = useRef<VariableSizeList | null>(null);
   const [activeListWidth, setActiveListWidth] = useState(900);
   const [inactiveListWidth, setInactiveListWidth] = useState(900);
+  const STUDENT_ROW_GAP = 12;
+  const STUDENT_COLLAPSED_SIZE = 98;
+  const ACTIVE_STUDENT_EXPANDED_SIZE = 264;
+  const INACTIVE_STUDENT_EXPANDED_SIZE = 236;
 
   useLayoutEffect(() => {
     const node = activeListContainerRef.current;
@@ -64,14 +69,14 @@ function StudentsSection({
 
   const getActiveItemSize = (index: number) => {
     const st: any = visibleActiveStudents[index];
-    if (!st) return 98;
-    return expandedStudent === st.id ? 264 : 98;
+    if (!st) return STUDENT_COLLAPSED_SIZE + STUDENT_ROW_GAP;
+    return (expandedStudent === st.id ? ACTIVE_STUDENT_EXPANDED_SIZE : STUDENT_COLLAPSED_SIZE) + STUDENT_ROW_GAP;
   };
 
   const getInactiveItemSize = (index: number) => {
     const st: any = visibleInactiveStudents[index];
-    if (!st) return 98;
-    return expandedStudent === st.id ? 210 : 98;
+    if (!st) return STUDENT_COLLAPSED_SIZE + STUDENT_ROW_GAP;
+    return (expandedStudent === st.id ? INACTIVE_STUDENT_EXPANDED_SIZE : STUDENT_COLLAPSED_SIZE) + STUDENT_ROW_GAP;
   };
 
   const activeListHeight = Math.min(
@@ -91,7 +96,7 @@ function StudentsSection({
   const ActiveStudentRow = ({ index, style }: ListChildComponentProps) => {
     const st: any = visibleActiveStudents[index];
     return (
-      <Box style={style} px={0} py={1}>
+      <Box style={style} px={0} pt={0} pb={`${STUDENT_ROW_GAP}px`}>
         <Box key={st.id} borderWidth="1px" borderRadius="12px" borderColor="gray.200" bg="white" overflow="hidden" _hover={{ borderColor: "gray.300", cursor: "pointer" }} onClick={() => setExpandedStudent((prev: any) => (prev === st.id ? null : st.id))}>
           <Box p={{ base: 4, xl: 5 }}>
             <HStack justify="space-between" align="start">
@@ -108,7 +113,7 @@ function StudentsSection({
             </Collapse>
           </Box>
           <Collapse in={expandedStudent === st.id} animateOpacity>
-            <HStack justify="flex-start" align="center" px={5} py={3} bg="gray.50" borderTopWidth="1px" borderColor="gray.200">
+            <HStack justify="space-between" align="center" px={5} py={3} bg="gray.50" borderTopWidth="1px" borderColor="gray.200">
               <HStack spacing={2}>
                 <Button size={actionIconButtonSize} variant="ghost" color="gray.400" _hover={{ bg: "gray.100", color: "blue.600" }} onClick={(e) => { e.stopPropagation(); openEditStudentModal(st); }}>
                   <Image src={editIconUrl} alt="Editar alumno" boxSize={actionIconSize} />
@@ -117,12 +122,29 @@ function StudentsSection({
                   <Box as="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" boxSize={actionIconSize} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path d="m14.5 9.5-5 5" /><path d="m9.5 9.5 5 5" /></Box>
                 </Button>
               </HStack>
-              <Button size={{ base: "sm", xl: "md", "2xl": "lg" }} variant="outline" borderRadius="lg" borderColor="gray.300" color="gray.800" _hover={{ borderColor: "gray.500", bg: "gray.50" }} onClick={(e) => { e.stopPropagation(); openAssignRoutineModal(st); }} h="40px" px={3}>
-                <HStack spacing={2}>
-                  <Box as="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" boxSize="18px" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M8 12h8" /><path d="M12 8v8" /></Box>
-                  <Text fontSize="sm" fontWeight="bold">Asignar rutina</Text>
-                </HStack>
-              </Button>
+              <HStack spacing={2}>
+                <Button
+                  size={actionIconButtonSize}
+                  variant="outline"
+                  borderRadius="lg"
+                  borderColor="gray.300"
+                  color="gray.700"
+                  _hover={{ borderColor: "gray.500", bg: "gray.50" }}
+                  onClick={(e) => { e.stopPropagation(); openStudentHistoryModal(st); }}
+                >
+                  <Box as="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" boxSize={actionIconSize} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                    <path d="M3 3v5h5" />
+                    <path d="M12 7v5l4 2" />
+                  </Box>
+                </Button>
+                <Button size={{ base: "sm", xl: "md", "2xl": "lg" }} variant="outline" borderRadius="lg" borderColor="gray.300" color="gray.800" _hover={{ borderColor: "gray.500", bg: "gray.50" }} onClick={(e) => { e.stopPropagation(); openAssignRoutineModal(st); }} h="40px" px={3}>
+                  <HStack spacing={2}>
+                    <Box as="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" boxSize="18px" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M8 12h8" /><path d="M12 8v8" /></Box>
+                    <Text fontSize="sm" fontWeight="bold">Asignar rutina</Text>
+                  </HStack>
+                </Button>
+              </HStack>
             </HStack>
           </Collapse>
         </Box>
@@ -133,7 +155,7 @@ function StudentsSection({
   const InactiveStudentRow = ({ index, style }: ListChildComponentProps) => {
     const st: any = visibleInactiveStudents[index];
     return (
-      <Box style={style} px={0} py={1}>
+      <Box style={style} px={0} pt={0} pb={`${STUDENT_ROW_GAP}px`}>
         <Box key={st.id} borderWidth="1px" borderRadius="12px" borderColor="gray.200" bg="white" overflow="hidden" _hover={{ borderColor: "gray.300", cursor: "pointer" }} onClick={() => setExpandedStudent((prev: any) => (prev === st.id ? null : st.id))}>
           <Box p={{ base: 4, xl: 5 }}>
             <HStack justify="space-between" align="start">
@@ -190,7 +212,7 @@ function StudentsSection({
                 height={activeListHeight}
                 itemCount={visibleActiveStudents.length}
                 itemSize={getActiveItemSize}
-                estimatedItemSize={98}
+                estimatedItemSize={STUDENT_COLLAPSED_SIZE + STUDENT_ROW_GAP}
                 width={activeListWidth}
               >
                 {ActiveStudentRow}
@@ -214,7 +236,7 @@ function StudentsSection({
                 height={inactiveListHeight}
                 itemCount={visibleInactiveStudents.length}
                 itemSize={getInactiveItemSize}
-                estimatedItemSize={98}
+                estimatedItemSize={STUDENT_COLLAPSED_SIZE + STUDENT_ROW_GAP}
                 width={inactiveListWidth}
               >
                 {InactiveStudentRow}

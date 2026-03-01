@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from ..deps import get_db
@@ -100,7 +101,14 @@ def create_routine(
         routine.days.append(day_model)
 
     db.add(routine)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ya existe una rutina con ese nombre",
+        )
     db.refresh(routine)
 
     # Recargar relaciones para la respuesta

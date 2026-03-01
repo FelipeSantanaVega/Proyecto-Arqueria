@@ -1,5 +1,5 @@
 :root {
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-family: "Manrope", "Inter", system-ui, -apple-system, sans-serif;
   background-color: #f7fafc;
   color: #1a202c;
   text-rendering: optimizeLegibility;
@@ -14,6 +14,7 @@
 body {
   margin: 0;
   background-color: #f7fafc;
+  font-family: inherit;
 }
 
 #root {

@@ -13,8 +13,19 @@ const theme = extendTheme({
     useSystemColorMode: false,
   },
   fonts: {
-    heading: '"Inter", system-ui, -apple-system, sans-serif',
-    body: '"Inter", system-ui, -apple-system, sans-serif',
+    heading: '"Manrope", "Inter", system-ui, -apple-system, sans-serif',
+    body: '"Manrope", "Inter", system-ui, -apple-system, sans-serif',
+    mono: '"Manrope", "Inter", system-ui, -apple-system, sans-serif',
+  },
+  styles: {
+    global: {
+      'html, body, #root': {
+        fontFamily: '"Manrope", "Inter", system-ui, -apple-system, sans-serif',
+      },
+      'button, input, textarea, select': {
+        fontFamily: '"Manrope", "Inter", system-ui, -apple-system, sans-serif',
+      },
+    },
   },
   components: {
     Modal: {
