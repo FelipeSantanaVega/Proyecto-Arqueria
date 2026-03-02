@@ -11,6 +11,7 @@ fastapi = "^0.109.0"
 uvicorn = { extras = ["standard"], version = "^0.25.0" }
 sqlalchemy = "^2.0.25"
 pymysql = "^1.1.0"
+psycopg = { version = "^3.2.3", extras = ["binary"] }
 pydantic-settings = "^2.2.1"
 python-dotenv = "^1.0.0"
 python-jose = "^3.3.0"

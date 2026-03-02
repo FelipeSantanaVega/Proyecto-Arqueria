@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     db_password: str = "archery_pass"
     db_name: str = "archery_training"
     db_charset: str = "utf8mb4"
+    db_engine: str = "mysql"
     database_url: str | None = None
 
     jwt_secret: str = "change_me"
@@ -36,10 +37,21 @@ class Settings(BaseSettings):
     @property
     def sqlalchemy_url(self) -> str:
         if self.database_url:
-            if "charset=" not in self.database_url:
-                separator = "&" if "?" in self.database_url else "?"
-                return f"{self.database_url}{separator}charset={self.db_charset}"
-            return self.database_url
+            url = self.database_url.strip()
+            if url.startswith("postgres://"):
+                url = "postgresql://" + url[len("postgres://"):]
+            if url.startswith("postgresql://") and not url.startswith("postgresql+"):
+                url = "postgresql+psycopg://" + url[len("postgresql://"):]
+            if url.startswith("mysql+pymysql://"):
+                if "charset=" not in url:
+                    separator = "&" if "?" in url else "?"
+                    return f"{url}{separator}charset={self.db_charset}"
+            return url
+        if self.db_engine.lower() in {"postgres", "postgresql"}:
+            return (
+                f"postgresql+psycopg://{self.db_user}:{self.db_password}"
+                f"@{self.db_host}:{self.db_port}/{self.db_name}"
+            )
         return (
             f"mysql+pymysql://{self.db_user}:{self.db_password}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}"

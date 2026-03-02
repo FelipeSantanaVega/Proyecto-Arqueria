@@ -3,7 +3,7 @@
 ## Requisitos
 - Python 3.10-3.12
 - Poetry
-- Base de datos MySQL/MariaDB corriendo (local XAMPP por ahora)
+- Base de datos PostgreSQL o MySQL/MariaDB
 
 ## Configuración
 1. Copia el `.env.example` de la raíz a `.env` y ajusta credenciales:
@@ -21,6 +21,7 @@
    - `DB_USER=archery_user`
    - `DB_PASSWORD=archery_pass`
    - `DB_NAME=archery_training`
+   - Para Render Postgres, usa `DATABASE_URL` directamente.
 
 ## Ejecutar en desarrollo
 ```sh
@@ -90,6 +91,9 @@ Ejemplos rápidos (JSON):
 ```
 
 ## Notas
-- La cadena de conexión se arma desde `.env` o `DATABASE_URL`. Por defecto usa `mysql+pymysql://archery_user:archery_pass@localhost:3306/archery_training`.
+- La cadena de conexión se arma desde `.env` o `DATABASE_URL`.
+  - MySQL/MariaDB: `mysql+pymysql://...`
+  - PostgreSQL (Render): `postgresql+psycopg://...`
+- Script PostgreSQL listo para inicializar tablas: `db/schema_postgres.sql`.
 - Pool `pre_ping` habilitado para reconexiones cuando Render/local corte conexiones o haya idle timeout.
 - CORS habilitado para `http://localhost:5173` y `http://127.0.0.1:5173` (frontend Vite).
