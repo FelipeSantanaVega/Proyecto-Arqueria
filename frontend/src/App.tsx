@@ -866,7 +866,7 @@ function App() {
       setStudentBowPounds("");
       setStudentArrowsAvailable("");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Error al crear alumno";
+      const msg = err instanceof Error ? err.message : "Error al crear deportista";
       setCreateStudentError(msg);
     } finally {
       setCreateStudentLoading(false);
@@ -905,7 +905,7 @@ function App() {
       setEditStudentModalOpen(false);
       setEditStudentTarget(null);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Error al editar alumno";
+      const msg = err instanceof Error ? err.message : "Error al editar deportista";
       setEditStudentError(msg);
     } finally {
       setEditStudentLoading(false);
@@ -2464,7 +2464,7 @@ function App() {
                     <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
                     <circle cx="9" cy="7" r="4" />
                   </Box>
-                  <Text fontSize="17px">Alumnos</Text>
+                  <Text fontSize="17px">Deportistas</Text>
                 </HStack>
               </Stack>
               <Stack spacing={3}>
@@ -3379,7 +3379,7 @@ function App() {
                           <Textarea
                             value={assignmentProfessorNotes}
                             onChange={(e) => setAssignmentProfessorNotes(e.target.value)}
-                            placeholder="Escribe observaciones para el alumno..."
+                            placeholder="Escribe observaciones para el deportista..."
                             minH="110px"
                             resize="vertical"
                           />
@@ -3664,7 +3664,7 @@ function App() {
                       <line x1="19" x2="19" y1="8" y2="14" />
                       <line x1="22" x2="16" y1="11" y2="11" />
                     </Box>
-                    <Text fontWeight="700" color="gray.900">Nuevo Alumno</Text>
+                    <Text fontWeight="700" color="gray.900">Nuevo Deportista</Text>
                   </HStack>
                   <Text fontSize="sm" color="gray.500">Ingresa los datos del nuevo estudiante de arquería.</Text>
                 </Stack>
@@ -3790,7 +3790,7 @@ function App() {
                 <Stack spacing={1}>
                   <HStack spacing={2}>
                     <Box color="#f97316" fontSize="16px">◎</Box>
-                    <Text fontWeight="700" color="gray.900">Editar Alumno</Text>
+                    <Text fontWeight="700" color="gray.900">Editar Deportista</Text>
                   </HStack>
                   <Text fontSize="sm" color="gray.500">Actualiza los datos del estudiante.</Text>
                 </Stack>
@@ -3920,7 +3920,7 @@ function App() {
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between" align="center">
                 <Stack spacing={0}>
-                  <Text fontWeight="700" color="gray.900">Historial del alumno</Text>
+                  <Text fontWeight="700" color="gray.900">Historial del deportista</Text>
                   <Text fontSize="sm" color="gray.500">
                     {studentHistoryTarget ? `${studentHistoryTarget.full_name} · DNI ${studentHistoryTarget.document_number}` : ""}
                   </Text>
@@ -4053,7 +4053,7 @@ function App() {
                                 )}
                                 {item.student_observations && (
                                   <Box>
-                                    <Text fontSize="sm" fontWeight="600" color="gray.800">Observaciones del alumno</Text>
+                                    <Text fontSize="sm" fontWeight="600" color="gray.800">Observaciones del deportista</Text>
                                     <Text fontSize="sm" color="gray.600" whiteSpace="pre-wrap">{item.student_observations}</Text>
                                   </Box>
                                 )}
@@ -4084,7 +4084,7 @@ function App() {
                       );
                     })}
                     {!filteredStudentHistoryItems.length && !studentHistoryError && (
-                      <Text color="gray.600" textAlign="center" py={6}>No hay rutinas en historial para este alumno.</Text>
+                      <Text color="gray.600" textAlign="center" py={6}>No hay rutinas en historial para este deportista.</Text>
                     )}
                   </Stack>
                 )}
@@ -4139,7 +4139,7 @@ function App() {
                   <Input
                     value={adminAssignSearch}
                     onChange={(e) => setAdminAssignSearch(e.target.value)}
-                    placeholder="Buscar alumno activo"
+                    placeholder="Buscar deportista activo"
                     borderRadius="8px"
                     borderColor="gray.300"
                   />
@@ -4174,7 +4174,7 @@ function App() {
                     );
                   })}
                   {!adminAssignableStudents.length && (
-                    <Text color="gray.600">No hay alumnos activos para asignar.</Text>
+                    <Text color="gray.600">No hay deportistas activos para asignar.</Text>
                   )}
                 </Stack>
               </Stack>
@@ -4221,7 +4221,7 @@ function App() {
                   <Text fontWeight="700" color="gray.900">
                     Asignar rutina a{" "}
                     <Text as="span" color={assignRoutineStep === "choice" ? "#f97316" : "gray.900"}>
-                      {assignRoutineStudent?.full_name || "alumno"}
+                      {assignRoutineStudent?.full_name || "deportista"}
                     </Text>
                   </Text>
                   {assignRoutineStep === "choice" && <Text fontSize="sm" color="gray.500">Paso 2 de 4: Selecciona el método de asignación</Text>}
@@ -4293,7 +4293,7 @@ function App() {
                           </Box>
                         </Box>
                         <Text fontWeight="700" color="gray.900">Crear rutina</Text>
-                        <Text fontSize="sm" color="gray.500">Diseña una rutina específica desde cero para este alumno.</Text>
+                        <Text fontSize="sm" color="gray.500">Diseña una rutina específica desde cero para este deportista.</Text>
                       </Stack>
                     </Box>
                     <Box
@@ -4642,7 +4642,7 @@ function App() {
                       <Textarea
                         value={assignmentProfessorNotes}
                         onChange={(e) => setAssignmentProfessorNotes(e.target.value)}
-                        placeholder="Escribe observaciones para el alumno..."
+                        placeholder="Escribe observaciones para el deportista..."
                         minH="110px"
                         resize="vertical"
                       />
@@ -5053,14 +5053,14 @@ function App() {
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.100">
-              Observaciones de alumno
+              Observaciones de deportista
             </ModalHeader>
             <ModalBody py={5}>
               <Stack spacing={4}>
                 <Textarea
                   value={saveAssignmentStudentObservations}
                   onChange={(e) => setSaveAssignmentStudentObservations(e.target.value)}
-                  placeholder="Escribe aquí las observaciones del alumno..."
+                  placeholder="Escribe aquí las observaciones del deportista..."
                   minH="140px"
                   resize="vertical"
                   borderColor="gray.300"
@@ -5138,7 +5138,7 @@ function App() {
                   ¿Eliminar rutina asignada?
                 </Heading>
                 <Text color="gray.500" fontSize="sm" maxW="300px">
-                  Se eliminará la rutina activa asignada al alumno. Esta acción no se puede deshacer.
+                  Se eliminará la rutina activa asignada al deportista. Esta acción no se puede deshacer.
                 </Text>
                 {deleteAssignedRoutineError && (
                   <Alert status="error" borderRadius="md" w="100%">
@@ -5177,7 +5177,7 @@ function App() {
           <ModalOverlay />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh">
             <ModalHeader>
-              <Text textAlign="center">Este alumno ya tiene una rutina asignada.</Text>
+              <Text textAlign="center">Este deportista ya tiene una rutina asignada.</Text>
               <Text textAlign="center">¿Desea eliminar la rutina y asignarle una nueva?</Text>
             </ModalHeader>
             <ModalBody>
@@ -5219,7 +5219,7 @@ function App() {
           <ModalOverlay />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh">
             <ModalHeader>
-              <Text textAlign="center">Este alumno ya tiene una rutina asignada.</Text>
+              <Text textAlign="center">Este deportista ya tiene una rutina asignada.</Text>
               <Text textAlign="center">¿Desea eliminar la rutina y asignarle una nueva?</Text>
             </ModalHeader>
             <ModalBody>
@@ -5284,7 +5284,7 @@ function App() {
                       <path d="M12 17h.01" />
                     </Box>
                   </Box>
-                  <Text fontWeight="700" color="gray.900">¿Dar de baja alumno?</Text>
+                  <Text fontWeight="700" color="gray.900">¿Dar de baja deportista?</Text>
                 </HStack>
                 <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => setDeactivateModalOpen(false)}>
                   ×
@@ -5301,7 +5301,7 @@ function App() {
               <Text color="gray.600">
                 Se dará de baja a{" "}
                 <Box as="span" fontWeight="600" color="gray.800">
-                  {deactivateStudent?.full_name || "este alumno"}
+                  {deactivateStudent?.full_name || "este deportista"}
                 </Box>
                 . Esta acción no se puede deshacer.
               </Text>
@@ -5356,7 +5356,7 @@ function App() {
                       <circle cx="9" cy="7" r="4" />
                     </Box>
                   </Box>
-                  <Text fontWeight="700" color="gray.900">¿Dar de alta alumno?</Text>
+                  <Text fontWeight="700" color="gray.900">¿Dar de alta deportista?</Text>
                 </HStack>
                 <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => setActivateModalOpen(false)}>
                   ×
@@ -5373,7 +5373,7 @@ function App() {
               <Text color="gray.600">
                 Se dará de alta a{" "}
                 <Box as="span" fontWeight="600" color="gray.800">
-                  {activateStudent?.full_name || "este alumno"}
+                  {activateStudent?.full_name || "este deportista"}
                 </Box>
                 .
               </Text>
@@ -5427,7 +5427,7 @@ function App() {
             <Stack spacing={3}>
               <Heading size="lg">Entrenamientos de Arquería</Heading>
               <Text color="gray.600">
-                Maqueta inicial: ejercicios, rutinas semanales y alumnos. Conectado a la API FastAPI en {" "}
+                Maqueta inicial: ejercicios, rutinas semanales y deportistas. Conectado a la API FastAPI en {" "}
                 <Tag colorScheme="blue" variant="subtle">
                   {API_BASE}
                 </Tag>
@@ -5542,7 +5542,7 @@ function App() {
                           {routineNameById.get(assignment.routine_id) || `Rutina #${assignment.routine_id}`}
                         </Text>
                         <Text color="gray.600" fontSize="sm">
-                          Alumno: {studentNameById.get(assignment.student_id) || `Alumno #${assignment.student_id}`}
+                          Deportista: {studentNameById.get(assignment.student_id) || `Deportista #${assignment.student_id}`}
                         </Text>
                         <Text color="gray.500" fontSize="xs">
                           Semana: {formatDateEs(assignment.start_date)} a {formatDateEs(assignment.end_date)}
@@ -5626,6 +5626,8 @@ function StatCard({ title, value, helper, icon }: StatCardProps) {
 }
 
 export default App;
+
+
 
 
 

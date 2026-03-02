@@ -72,7 +72,7 @@ function AdminRoutinesSection({
                 <HStack justify="space-between" align="start">
                   <Stack spacing={1}>
                     <Heading size="md" color="gray.900">
-                      {studentNameById.get(assignment.student_id) || `Alumno #${assignment.student_id}`}
+                      {studentNameById.get(assignment.student_id) || `Deportista #${assignment.student_id}`}
                     </Heading>
                     <Text color="gray.500" fontSize="sm">
                       Semana: {formatDateEs(assignment.start_date)} a {formatDateEs(assignment.end_date)}
@@ -241,3 +241,5 @@ function AdminRoutinesSection({
 }
 
 export default memo(AdminRoutinesSection);
+
+

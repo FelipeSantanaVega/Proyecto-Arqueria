@@ -116,7 +116,7 @@ function StudentsSection({
             <HStack justify="space-between" align="center" px={5} py={3} bg="gray.50" borderTopWidth="1px" borderColor="gray.200">
               <HStack spacing={2}>
                 <Button size={actionIconButtonSize} variant="ghost" color="gray.400" _hover={{ bg: "gray.100", color: "blue.600" }} onClick={(e) => { e.stopPropagation(); openEditStudentModal(st); }}>
-                  <Image src={editIconUrl} alt="Editar alumno" boxSize={actionIconSize} />
+                  <Image src={editIconUrl} alt="Editar deportista" boxSize={actionIconSize} />
                 </Button>
                 <Button size={actionIconButtonSize} variant="ghost" color="gray.400" _hover={{ bg: "red.50", color: "red.600" }} onClick={(e) => { e.stopPropagation(); setDeactivateStudent(st); setDeactivateError(null); setDeactivateModalOpen(true); }}>
                   <Box as="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" boxSize={actionIconSize} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path d="m14.5 9.5-5 5" /><path d="m9.5 9.5 5 5" /></Box>
@@ -175,7 +175,7 @@ function StudentsSection({
             <HStack justify="space-between" align="center" px={5} py={3} bg="gray.50" borderTopWidth="1px" borderColor="gray.200">
               <HStack spacing={2}>
                 <Button size={actionIconButtonSize} variant="ghost" color="gray.400" _hover={{ bg: "gray.100", color: "blue.600" }} onClick={(e) => { e.stopPropagation(); openEditStudentModal(st); }}>
-                  <Image src={editIconUrl} alt="Editar alumno" boxSize={actionIconSize} />
+                  <Image src={editIconUrl} alt="Editar deportista" boxSize={actionIconSize} />
                 </Button>
                 <Button size={actionIconButtonSize} variant="ghost" color="gray.400" _hover={{ bg: "green.50", color: "green.600" }} onClick={(e) => { e.stopPropagation(); setActivateStudent(st); setActivateError(null); setActivateModalOpen(true); }}>
                   <Box as="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" boxSize="16px" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path d="m9 12 2 2 4-4" /></Box>
@@ -193,18 +193,18 @@ function StudentsSection({
       <HStack justify="space-between" align="center" spacing={4} w="full" maxW="980px">
         <InputGroup maxW="420px">
           <InputLeftElement pointerEvents="none" color="gray.500"><SearchIcon boxSize={3.5} /></InputLeftElement>
-          <Input value={studentSearch} onChange={(e) => setStudentSearch(e.target.value)} placeholder="Buscar alumnos" bg="white" borderColor="gray.300" borderRadius="10px" _hover={{ borderColor: "gray.400" }} _focus={{ borderColor: "gray.500", bg: "white" }} />
+          <Input value={studentSearch} onChange={(e) => setStudentSearch(e.target.value)} placeholder="Buscar deportistas" bg="white" borderColor="gray.300" borderRadius="10px" _hover={{ borderColor: "gray.400" }} _focus={{ borderColor: "gray.500", bg: "white" }} />
         </InputGroup>
         <Button bg="#f97316" color="white" borderRadius="10px" _hover={{ bg: "#ea580c" }} _active={{ bg: "#c2410c" }} onClick={() => setCreateStudentModalOpen(true)}>
           <HStack justify="center" spacing={2}>
-            <Image src={userPlusIconUrl} alt="Agregar alumno" boxSize="16px" filter="brightness(0) invert(1)" />
-            <Text>Agregar alumno</Text>
+            <Image src={userPlusIconUrl} alt="Agregar deportista" boxSize="16px" filter="brightness(0) invert(1)" />
+            <Text>Agregar deportista</Text>
           </HStack>
         </Button>
       </HStack>
       <Stack spacing={6} w="full" maxW="980px">
         <Stack spacing={3}>
-          <Heading size="md" color="black">Alumnos activos</Heading>
+          <Heading size="md" color="black">Deportistas activos</Heading>
           <Box ref={activeListContainerRef}>
             {!!visibleActiveStudents.length && (
               <List
@@ -219,16 +219,16 @@ function StudentsSection({
               </List>
             )}
           </Box>
-          {!filteredActiveStudents.length && <Text color="gray.600">No hay alumnos activos.</Text>}
+          {!filteredActiveStudents.length && <Text color="gray.600">No hay deportistas activos.</Text>}
           {filteredActiveStudents.length > visibleActiveStudents.length && (
             <Button alignSelf="center" variant="outline" borderColor="gray.300" onClick={showMoreActiveStudents}>
-              Mostrar más alumnos activos
+              Mostrar más deportistas activos
             </Button>
           )}
         </Stack>
 
         <Stack spacing={3}>
-          <Heading size="md" color="black">Alumnos inactivos</Heading>
+          <Heading size="md" color="black">Deportistas inactivos</Heading>
           <Box ref={inactiveListContainerRef}>
             {!!visibleInactiveStudents.length && (
               <List
@@ -243,10 +243,10 @@ function StudentsSection({
               </List>
             )}
           </Box>
-          {!filteredInactiveStudents.length && <Text color="gray.600">No hay alumnos inactivos.</Text>}
+          {!filteredInactiveStudents.length && <Text color="gray.600">No hay deportistas inactivos.</Text>}
           {filteredInactiveStudents.length > visibleInactiveStudents.length && (
             <Button alignSelf="center" variant="outline" borderColor="gray.300" onClick={showMoreInactiveStudents}>
-              Mostrar más alumnos inactivos
+              Mostrar más deportistas inactivos
             </Button>
           )}
         </Stack>
@@ -256,3 +256,4 @@ function StudentsSection({
 }
 
 export default memo(StudentsSection);
+
