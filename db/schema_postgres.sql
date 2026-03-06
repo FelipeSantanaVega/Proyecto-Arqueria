@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS exercises (
   id BIGSERIAL PRIMARY KEY,
   name VARCHAR(120) NOT NULL,
   arrows_count INTEGER NOT NULL CHECK (arrows_count >= 0),
+  rounds INTEGER NOT NULL DEFAULT 1 CHECK (rounds > 0),
+  arrows_per_round INTEGER NOT NULL DEFAULT 0 CHECK (arrows_per_round >= 0),
   distance_m NUMERIC(6,2) NOT NULL CHECK (distance_m >= 0),
   description TEXT NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,

@@ -52,12 +52,16 @@ class Exercise(Base):
     __tablename__ = "exercises"
     __table_args__ = (
         CheckConstraint("arrows_count >= 0", name="chk_exercises_arrows_positive"),
+        CheckConstraint("rounds > 0", name="chk_exercises_rounds_positive"),
+        CheckConstraint("arrows_per_round >= 0", name="chk_exercises_arrows_per_round_positive"),
         CheckConstraint("distance_m >= 0", name="chk_exercises_distance_positive"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     arrows_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    rounds: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    arrows_per_round: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     distance_m: Mapped[float] = mapped_column(Numeric(6, 2), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

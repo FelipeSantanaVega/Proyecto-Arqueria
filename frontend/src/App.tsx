@@ -286,6 +286,8 @@ type Exercise = {
   id: number;
   name: string;
   arrows_count: number;
+  rounds?: number;
+  arrows_per_round?: number;
   distance_m: number;
   description?: string;
   is_active: boolean;
@@ -430,6 +432,26 @@ function formatDateEs(value?: string | null): string {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+function getRoutineEntryKey(exerciseId: number, itemIndex: number): string {
+  return `${itemIndex}:${exerciseId}`;
+}
+
+function remapOverrideKeysAfterRemoval(
+  dayOverrides: Record<string, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>,
+  removedIndex: number,
+): Record<string, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }> {
+  const next: Record<string, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }> = {};
+  Object.entries(dayOverrides).forEach(([key, value]) => {
+    const [idxRaw, exerciseIdRaw] = key.split(":");
+    const idx = Number(idxRaw);
+    if (Number.isNaN(idx) || !exerciseIdRaw) return;
+    if (idx === removedIndex) return;
+    const nextIdx = idx > removedIndex ? idx - 1 : idx;
+    next[`${nextIdx}:${exerciseIdRaw}`] = value;
+  });
+  return next;
+}
+
 function toIsoLocal(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -512,6 +534,7 @@ function App() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editExercise, setEditExercise] = useState<Exercise | null>(null);
   const [editName, setEditName] = useState("");
+  const [editRounds, setEditRounds] = useState<number | "">("");
   const [editArrows, setEditArrows] = useState<number | "">("");
   const [editDistance, setEditDistance] = useState<number | "">("");
   const [editDescription, setEditDescription] = useState("");
@@ -528,13 +551,14 @@ function App() {
   const [routineExercisesByDay, setRoutineExercisesByDay] = useState<Record<string, number[]>>({});
   const [routineExerciseSearch, setRoutineExerciseSearch] = useState("");
   const [routineCreateExerciseOverridesByDay, setRoutineCreateExerciseOverridesByDay] = useState<
-    Record<string, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>>
+    Record<string, Record<string, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>>
   >({});
   const [routineCreateAddExerciseModalOpen, setRoutineCreateAddExerciseModalOpen] = useState(false);
   const [routineCreateAddExerciseDayKey, setRoutineCreateAddExerciseDayKey] = useState<string | null>(null);
   const [routineCreateAddExerciseSearch, setRoutineCreateAddExerciseSearch] = useState("");
   const [routineCreateEditExerciseModalOpen, setRoutineCreateEditExerciseModalOpen] = useState(false);
-  const [routineCreateEditTarget, setRoutineCreateEditTarget] = useState<{ dayKey: string; exerciseId: number } | null>(null);
+  const [routineCreateEditTarget, setRoutineCreateEditTarget] = useState<{ dayKey: string; exerciseId: number; itemIndex: number } | null>(null);
+  const [routineCreateEditRounds, setRoutineCreateEditRounds] = useState<number | "">("");
   const [routineCreateEditArrows, setRoutineCreateEditArrows] = useState<number | "">("");
   const [routineCreateEditDistance, setRoutineCreateEditDistance] = useState<number | "">("");
   const [routineCreateEditDescription, setRoutineCreateEditDescription] = useState("");
@@ -569,13 +593,14 @@ function App() {
   const [routineAssignDayInitialLimit, setRoutineAssignDayInitialLimit] = useState(1);
   const [routineAssignExercisesByDay, setRoutineAssignExercisesByDay] = useState<Record<string, number[]>>({});
   const [routineAssignExerciseOverridesByDay, setRoutineAssignExerciseOverridesByDay] = useState<
-    Record<string, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>>
+    Record<string, Record<string, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>>
   >({});
   const [addExerciseDayModalOpen, setAddExerciseDayModalOpen] = useState(false);
   const [addExerciseTargetDayKey, setAddExerciseTargetDayKey] = useState<string | null>(null);
   const [addExerciseSearch, setAddExerciseSearch] = useState("");
   const [editAssignExerciseModalOpen, setEditAssignExerciseModalOpen] = useState(false);
-  const [editAssignExerciseTarget, setEditAssignExerciseTarget] = useState<{ dayKey: string; exerciseId: number } | null>(null);
+  const [editAssignExerciseTarget, setEditAssignExerciseTarget] = useState<{ dayKey: string; exerciseId: number; itemIndex: number } | null>(null);
+  const [editAssignRounds, setEditAssignRounds] = useState<number | "">("");
   const [editAssignArrows, setEditAssignArrows] = useState<number | "">("");
   const [editAssignDistance, setEditAssignDistance] = useState<number | "">("");
   const [editAssignDescription, setEditAssignDescription] = useState("");
@@ -591,6 +616,7 @@ function App() {
   const assignmentStartDatePickerRef = useRef<HTMLInputElement | null>(null);
   const assignmentEndDatePickerRef = useRef<HTMLInputElement | null>(null);
   const [createName, setCreateName] = useState("");
+  const [createRounds, setCreateRounds] = useState<number | "">("");
   const [createArrows, setCreateArrows] = useState<number | "">("");
   const [createDistance, setCreateDistance] = useState<number | "">("");
   const [createDescription, setCreateDescription] = useState("");
@@ -737,6 +763,17 @@ function App() {
     return Math.max(0, n);
   };
 
+  const deriveRoundsAndArrowsPerRound = (totalArrows: number | "", baseRounds: number, baseArrowsPerRound: number) => {
+    if (totalArrows === "" || Number(totalArrows) < 0) {
+      return { rounds: baseRounds > 0 ? baseRounds : 1, arrowsPerRound: baseArrowsPerRound >= 0 ? baseArrowsPerRound : 0 };
+    }
+    const total = Number(totalArrows);
+    if (baseRounds > 0 && total % baseRounds === 0) {
+      return { rounds: baseRounds, arrowsPerRound: total / baseRounds };
+    }
+    return { rounds: 1, arrowsPerRound: total };
+  };
+
   const blockInvalidKeys = (e: React.KeyboardEvent<HTMLInputElement>, allowDot = false) => {
     const invalid = ["e", "E", "+", "-"];
     if (!allowDot) invalid.push(".", ",");
@@ -788,7 +825,8 @@ function App() {
         token,
         body: JSON.stringify({
           name: editName,
-          arrows_count: Number(editArrows),
+          rounds: Number(editRounds),
+          arrows_per_round: Number(editArrows),
           distance_m: Number(editDistance),
           description: editDescription,
           is_active: true,
@@ -815,7 +853,8 @@ function App() {
         token,
         body: JSON.stringify({
           name: createName,
-          arrows_count: Number(createArrows),
+          rounds: Number(createRounds),
+          arrows_per_round: Number(createArrows),
           distance_m: Number(createDistance),
           description: createDescription,
           is_active: true,
@@ -834,6 +873,7 @@ function App() {
   const closeCreateExerciseModal = useCallback(() => {
     setCreateModalOpen(false);
     setCreateName("");
+    setCreateRounds("");
     setCreateArrows("");
     setCreateDistance("");
     setCreateDescription("");
@@ -1176,6 +1216,10 @@ function App() {
     setAddExerciseSearch("");
     setEditAssignExerciseModalOpen(false);
     setEditAssignExerciseTarget(null);
+    setEditAssignRounds("");
+    setEditAssignArrows("");
+    setEditAssignDistance("");
+    setEditAssignDescription("");
     setDeleteAssignDayConfirmOpen(false);
     setDeleteAssignDayTargetNumber(null);
   }, []);
@@ -1305,6 +1349,7 @@ function App() {
     setRoutineCreateAddExerciseSearch("");
     setRoutineCreateEditExerciseModalOpen(false);
     setRoutineCreateEditTarget(null);
+    setRoutineCreateEditRounds("");
     setRoutineCreateEditArrows("");
     setRoutineCreateEditDistance("");
     setRoutineCreateEditDescription("");
@@ -1330,6 +1375,7 @@ function App() {
     setRoutineCreateAddExerciseSearch("");
     setRoutineCreateEditExerciseModalOpen(false);
     setRoutineCreateEditTarget(null);
+    setRoutineCreateEditRounds("");
     setRoutineCreateEditArrows("");
     setRoutineCreateEditDistance("");
     setRoutineCreateEditDescription("");
@@ -1345,25 +1391,27 @@ function App() {
   const openEditRoutineModal = useCallback((routine: Routine) => {
     const sortedDays = [...routine.days].sort((a, b) => a.day_number - b.day_number);
     const exercisesByDay: Record<string, number[]> = {};
-    const overridesByDay: Record<string, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
+    const overridesByDay: Record<string, Record<string, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
     for (const day of sortedDays) {
       const key = `day_${day.day_number}`;
       exercisesByDay[key] = [...day.exercises]
         .sort((a, b) => a.sort_order - b.sort_order)
         .map((exercise) => exercise.exercise_id);
-      for (const exercise of day.exercises) {
+      day.exercises
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .forEach((exercise, itemIndex) => {
         const hasOverride =
           exercise.arrows_override !== null ||
           exercise.distance_override_m !== null ||
           (exercise.notes || "").trim() !== "";
-        if (!hasOverride) continue;
+        if (!hasOverride) return;
         overridesByDay[key] = overridesByDay[key] || {};
-        overridesByDay[key][exercise.exercise_id] = {
+        overridesByDay[key][getRoutineEntryKey(exercise.exercise_id, itemIndex)] = {
           arrows_override: exercise.arrows_override,
           distance_override_m: exercise.distance_override_m,
           description_override: exercise.notes || null,
         };
-      }
+      });
     }
     setEditingRoutineId(routine.id);
     setRoutineName(routine.name);
@@ -1379,6 +1427,7 @@ function App() {
     setRoutineCreateAddExerciseSearch("");
     setRoutineCreateEditExerciseModalOpen(false);
     setRoutineCreateEditTarget(null);
+    setRoutineCreateEditRounds("");
     setRoutineCreateEditArrows("");
     setRoutineCreateEditDistance("");
     setRoutineCreateEditDescription("");
@@ -1450,9 +1499,9 @@ function App() {
           exercises: (routineExercisesByDay[day.key] || []).map((exerciseId, idx) => ({
             exercise_id: exerciseId,
             sort_order: idx + 1,
-            arrows_override: routineCreateExerciseOverridesByDay[day.key]?.[exerciseId]?.arrows_override ?? null,
-            distance_override_m: routineCreateExerciseOverridesByDay[day.key]?.[exerciseId]?.distance_override_m ?? null,
-            notes: routineCreateExerciseOverridesByDay[day.key]?.[exerciseId]?.description_override ?? null,
+            arrows_override: routineCreateExerciseOverridesByDay[day.key]?.[getRoutineEntryKey(exerciseId, idx)]?.arrows_override ?? null,
+            distance_override_m: routineCreateExerciseOverridesByDay[day.key]?.[getRoutineEntryKey(exerciseId, idx)]?.distance_override_m ?? null,
+            notes: routineCreateExerciseOverridesByDay[day.key]?.[getRoutineEntryKey(exerciseId, idx)]?.description_override ?? null,
           })),
         })),
       };
@@ -1508,7 +1557,6 @@ function App() {
   const addExerciseToRoutineSummaryDay = (dayKey: string, exerciseId: number) => {
     setRoutineExercisesByDay((prev) => {
       const current = prev[dayKey] || [];
-      if (current.includes(exerciseId)) return prev;
       return { ...prev, [dayKey]: [...current, exerciseId] };
     });
     setRoutineCreateAddExerciseModalOpen(false);
@@ -1552,7 +1600,7 @@ function App() {
     });
 
     setRoutineCreateExerciseOverridesByDay((prev) => {
-      const next: Record<string, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
+      const next: Record<string, Record<string, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
       let writeIdx = 1;
       for (let readIdx = 1; readIdx <= routineDayCount; readIdx++) {
         if (readIdx === target) continue;
@@ -1569,11 +1617,20 @@ function App() {
     setDeleteRoutineDayTargetNumber(null);
   };
 
-  const openRoutineCreateEditExercise = (dayKey: string, exerciseId: number) => {
+  const openRoutineCreateEditExercise = (dayKey: string, exerciseId: number, itemIndex: number) => {
     const base = exercises.find((ex) => ex.id === exerciseId);
-    const override = routineCreateExerciseOverridesByDay[dayKey]?.[exerciseId];
-    setRoutineCreateEditTarget({ dayKey, exerciseId });
-    setRoutineCreateEditArrows(override?.arrows_override ?? base?.arrows_count ?? "");
+    const entryKey = getRoutineEntryKey(exerciseId, itemIndex);
+    const override = routineCreateExerciseOverridesByDay[dayKey]?.[entryKey];
+    const baseRounds = Number(base?.rounds ?? 1);
+    const baseArrowsPerRound = Number(base?.arrows_per_round ?? base?.arrows_count ?? 0);
+    const derived = deriveRoundsAndArrowsPerRound(
+      override?.arrows_override ?? "",
+      baseRounds,
+      baseArrowsPerRound,
+    );
+    setRoutineCreateEditTarget({ dayKey, exerciseId, itemIndex });
+    setRoutineCreateEditRounds(derived.rounds);
+    setRoutineCreateEditArrows(derived.arrowsPerRound);
     setRoutineCreateEditDistance(override?.distance_override_m ?? Number(base?.distance_m ?? 0) ?? "");
     setRoutineCreateEditDescription(override?.description_override ?? base?.description ?? "");
     setRoutineCreateEditExerciseModalOpen(true);
@@ -1581,12 +1638,13 @@ function App() {
 
   const saveRoutineCreateEditExercise = () => {
     if (!routineCreateEditTarget) return;
+    if (routineCreateEditRounds === "" || routineCreateEditArrows === "") return;
     setRoutineCreateExerciseOverridesByDay((prev) => ({
       ...prev,
       [routineCreateEditTarget.dayKey]: {
         ...(prev[routineCreateEditTarget.dayKey] || {}),
-        [routineCreateEditTarget.exerciseId]: {
-          arrows_override: routineCreateEditArrows === "" ? null : Number(routineCreateEditArrows),
+        [getRoutineEntryKey(routineCreateEditTarget.exerciseId, routineCreateEditTarget.itemIndex)]: {
+          arrows_override: Number(routineCreateEditRounds) * Number(routineCreateEditArrows),
           distance_override_m: routineCreateEditDistance === "" ? null : Number(routineCreateEditDistance),
           description_override: routineCreateEditDescription || null,
         },
@@ -1594,18 +1652,20 @@ function App() {
     }));
     setRoutineCreateEditExerciseModalOpen(false);
     setRoutineCreateEditTarget(null);
+    setRoutineCreateEditRounds("");
+    setRoutineCreateEditArrows("");
+    setRoutineCreateEditDistance("");
+    setRoutineCreateEditDescription("");
   };
 
-  const removeExerciseFromRoutineSummaryDay = (dayKey: string, exerciseId: number) => {
+  const removeExerciseFromRoutineSummaryDay = (dayKey: string, itemIndex: number) => {
     setRoutineExercisesByDay((prev) => {
       const current = prev[dayKey] || [];
-      return { ...prev, [dayKey]: current.filter((id) => id !== exerciseId) };
+      return { ...prev, [dayKey]: current.filter((_, idx) => idx !== itemIndex) };
     });
     setRoutineCreateExerciseOverridesByDay((prev) => {
       const dayOverrides = prev[dayKey] || {};
-      if (!(exerciseId in dayOverrides)) return prev;
-      const nextDayOverrides = { ...dayOverrides };
-      delete nextDayOverrides[exerciseId];
+      const nextDayOverrides = remapOverrideKeysAfterRemoval(dayOverrides, itemIndex);
       return { ...prev, [dayKey]: nextDayOverrides };
     });
   };
@@ -1738,17 +1798,19 @@ function App() {
   const handleSelectRoutineToAssign = (routine: Routine) => {
     const orderedDays = [...routine.days].sort((a, b) => a.day_number - b.day_number);
     const nextExercisesByDay: Record<string, number[]> = {};
-    const nextOverridesByDay: Record<string, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
+    const nextOverridesByDay: Record<string, Record<string, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
     orderedDays.forEach((day, index) => {
       const dayKey = `day_${index + 1}`;
       nextExercisesByDay[dayKey] = day.exercises
         .sort((a, b) => a.sort_order - b.sort_order)
         .map((ex) => ex.exercise_id);
-      day.exercises.forEach((ex) => {
+      day.exercises
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .forEach((ex, itemIndex) => {
         const hasOverride = ex.arrows_override !== null || ex.distance_override_m !== null || (ex.notes || "").trim() !== "";
         if (!hasOverride) return;
         nextOverridesByDay[dayKey] = nextOverridesByDay[dayKey] || {};
-        nextOverridesByDay[dayKey][ex.exercise_id] = {
+        nextOverridesByDay[dayKey][getRoutineEntryKey(ex.exercise_id, itemIndex)] = {
           arrows_override: ex.arrows_override,
           distance_override_m: ex.distance_override_m,
           description_override: ex.notes || null,
@@ -1763,7 +1825,7 @@ function App() {
     setAssignRoutineStep("existing_preview");
     setAssignRoutineError(null);
     const limitedExercises: Record<string, number[]> = {};
-    const limitedOverrides: Record<string, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
+    const limitedOverrides: Record<string, Record<string, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
     for (let idx = 1; idx <= selectedDays; idx += 1) {
       const key = `day_${idx}`;
       limitedExercises[key] = [...(nextExercisesByDay[key] || [])];
@@ -1779,11 +1841,20 @@ function App() {
     setDeleteAssignDayTargetNumber(null);
   };
 
-  const openEditAssignExercise = (dayKey: string, exerciseId: number) => {
+  const openEditAssignExercise = (dayKey: string, exerciseId: number, itemIndex: number) => {
     const base = exercises.find((ex) => ex.id === exerciseId);
-    const override = routineAssignExerciseOverridesByDay[dayKey]?.[exerciseId];
-    setEditAssignExerciseTarget({ dayKey, exerciseId });
-    setEditAssignArrows(override?.arrows_override ?? base?.arrows_count ?? "");
+    const entryKey = getRoutineEntryKey(exerciseId, itemIndex);
+    const override = routineAssignExerciseOverridesByDay[dayKey]?.[entryKey];
+    const baseRounds = Number(base?.rounds ?? 1);
+    const baseArrowsPerRound = Number(base?.arrows_per_round ?? base?.arrows_count ?? 0);
+    const derived = deriveRoundsAndArrowsPerRound(
+      override?.arrows_override ?? "",
+      baseRounds,
+      baseArrowsPerRound,
+    );
+    setEditAssignExerciseTarget({ dayKey, exerciseId, itemIndex });
+    setEditAssignRounds(derived.rounds);
+    setEditAssignArrows(derived.arrowsPerRound);
     setEditAssignDistance(override?.distance_override_m ?? Number(base?.distance_m ?? 0) ?? "");
     setEditAssignDescription(override?.description_override ?? base?.description ?? "");
     setEditAssignExerciseModalOpen(true);
@@ -1798,7 +1869,6 @@ function App() {
   const addTemporaryExerciseToDay = (dayKey: string, exerciseId: number) => {
     setRoutineAssignExercisesByDay((prev) => {
       const current = prev[dayKey] || [];
-      if (current.includes(exerciseId)) return prev;
       return { ...prev, [dayKey]: [...current, exerciseId] };
     });
     setAddExerciseDayModalOpen(false);
@@ -1816,12 +1886,13 @@ function App() {
 
   const saveEditAssignExercise = () => {
     if (!editAssignExerciseTarget) return;
+    if (editAssignRounds === "" || editAssignArrows === "") return;
     setRoutineAssignExerciseOverridesByDay((prev) => ({
       ...prev,
       [editAssignExerciseTarget.dayKey]: {
         ...(prev[editAssignExerciseTarget.dayKey] || {}),
-        [editAssignExerciseTarget.exerciseId]: {
-          arrows_override: editAssignArrows === "" ? null : Number(editAssignArrows),
+        [getRoutineEntryKey(editAssignExerciseTarget.exerciseId, editAssignExerciseTarget.itemIndex)]: {
+          arrows_override: Number(editAssignRounds) * Number(editAssignArrows),
           distance_override_m: editAssignDistance === "" ? null : Number(editAssignDistance),
           description_override: editAssignDescription || null,
         },
@@ -1829,6 +1900,10 @@ function App() {
     }));
     setEditAssignExerciseModalOpen(false);
     setEditAssignExerciseTarget(null);
+    setEditAssignRounds("");
+    setEditAssignArrows("");
+    setEditAssignDistance("");
+    setEditAssignDescription("");
   };
 
   const addAssignRoutineDay = () => {
@@ -1861,7 +1936,7 @@ function App() {
       return next;
     });
     setRoutineAssignExerciseOverridesByDay((prev) => {
-      const next: Record<string, Record<number, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
+      const next: Record<string, Record<string, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
       let writeIdx = 1;
       for (let readIdx = 1; readIdx <= routineAssignDayCount; readIdx++) {
         if (readIdx === target) continue;
@@ -1876,16 +1951,14 @@ function App() {
     setDeleteAssignDayTargetNumber(null);
   };
 
-  const removeAssignExerciseFromDay = (dayKey: string, exerciseId: number) => {
+  const removeAssignExerciseFromDay = (dayKey: string, itemIndex: number) => {
     setRoutineAssignExercisesByDay((prev) => ({
       ...prev,
-      [dayKey]: (prev[dayKey] || []).filter((id) => id !== exerciseId),
+      [dayKey]: (prev[dayKey] || []).filter((_, idx) => idx !== itemIndex),
     }));
     setRoutineAssignExerciseOverridesByDay((prev) => {
       const dayOverrides = prev[dayKey] || {};
-      if (!(exerciseId in dayOverrides)) return prev;
-      const nextDayOverrides = { ...dayOverrides };
-      delete nextDayOverrides[exerciseId];
+      const nextDayOverrides = remapOverrideKeysAfterRemoval(dayOverrides, itemIndex);
       return { ...prev, [dayKey]: nextDayOverrides };
     });
   };
@@ -1902,13 +1975,13 @@ function App() {
       const validExerciseIds = new Set(exercises.map((ex) => ex.id));
       const sanitizedDays = routineAssignBuilderDays
         .map((day) => {
-          const uniqueIds = Array.from(new Set((routineAssignExercisesByDay[day.key] || []).filter((id) => validExerciseIds.has(id))));
-          const sanitizedExercises = uniqueIds.map((exerciseId, idx) => ({
+          const dayExercises = (routineAssignExercisesByDay[day.key] || []).filter((id) => validExerciseIds.has(id));
+          const sanitizedExercises = dayExercises.map((exerciseId, idx) => ({
             exercise_id: exerciseId,
             sort_order: idx + 1,
-            arrows_override: routineAssignExerciseOverridesByDay[day.key]?.[exerciseId]?.arrows_override ?? null,
-            distance_override_m: routineAssignExerciseOverridesByDay[day.key]?.[exerciseId]?.distance_override_m ?? null,
-            notes: routineAssignExerciseOverridesByDay[day.key]?.[exerciseId]?.description_override ?? null,
+            arrows_override: routineAssignExerciseOverridesByDay[day.key]?.[getRoutineEntryKey(exerciseId, idx)]?.arrows_override ?? null,
+            distance_override_m: routineAssignExerciseOverridesByDay[day.key]?.[getRoutineEntryKey(exerciseId, idx)]?.distance_override_m ?? null,
+            notes: routineAssignExerciseOverridesByDay[day.key]?.[getRoutineEntryKey(exerciseId, idx)]?.description_override ?? null,
           }));
           return {
             day_number: day.dayNumber,
@@ -2574,6 +2647,7 @@ function App() {
                     setCreateModalOpen={setCreateModalOpen}
                     setEditExercise={setEditExercise}
                     setEditName={setEditName}
+                    setEditRounds={setEditRounds}
                     setEditArrows={setEditArrows}
                     setEditDistance={setEditDistance}
                     setEditDescription={setEditDescription}
@@ -2637,9 +2711,27 @@ function App() {
                     _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
                   />
                 </FormControl>
-                <SimpleGrid columns={2} spacing={3}>
+                <SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
                   <FormControl>
-                    <FormLabel color="gray.700" fontSize="sm">Flechas</FormLabel>
+                    <FormLabel color="gray.700" fontSize="sm">Rondas</FormLabel>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      min={1}
+                      step={1}
+                      value={editRounds}
+                      onChange={(e) => setEditRounds(normalizeInt(e.target.value))}
+                      onKeyDown={(e) => blockInvalidKeys(e, false)}
+                      onBeforeInput={handleBeforeInputInt}
+                      onPaste={handlePasteInt}
+                      borderColor="gray.300"
+                      borderRadius="8px"
+                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel color="gray.700" fontSize="sm">Flechas por ronda</FormLabel>
                     <Input
                       type="number"
                       inputMode="numeric"
@@ -2706,7 +2798,7 @@ function App() {
                   _hover={{ bg: "#ea580c" }}
                   _active={{ bg: "#c2410c" }}
                   isLoading={editLoading}
-                  isDisabled={!editName || editArrows === "" || editDistance === ""}
+                  isDisabled={!editName || editRounds === "" || editArrows === "" || editDistance === ""}
                   onClick={handleEditSave}
                 >
                   Guardar
@@ -2738,9 +2830,27 @@ function App() {
                     _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
                   />
                 </FormControl>
-                <SimpleGrid columns={2} spacing={3}>
+                <SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
                   <FormControl>
-                    <FormLabel color="gray.700" fontSize="sm">Flechas</FormLabel>
+                    <FormLabel color="gray.700" fontSize="sm">Rondas</FormLabel>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      min={1}
+                      step={1}
+                      value={createRounds}
+                      onChange={(e) => setCreateRounds(normalizeInt(e.target.value))}
+                      onKeyDown={(e) => blockInvalidKeys(e, false)}
+                      onBeforeInput={handleBeforeInputInt}
+                      onPaste={handlePasteInt}
+                      borderColor="gray.300"
+                      borderRadius="8px"
+                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel color="gray.700" fontSize="sm">Flechas por ronda</FormLabel>
                     <Input
                       type="number"
                       inputMode="numeric"
@@ -2809,7 +2919,7 @@ function App() {
                   _hover={{ bg: "#ea580c" }}
                   _active={{ bg: "#c2410c" }}
                   isLoading={createLoading}
-                  isDisabled={!createName || createArrows === "" || createDistance === ""}
+                  isDisabled={!createName || createRounds === "" || createArrows === "" || createDistance === ""}
                   onClick={handleCreateSave}
                 >
                   Guardar
@@ -3197,11 +3307,11 @@ function App() {
                             {day.label}
                           </Text>
                           <Stack spacing={1} mt={2}>
-                            {(routineExercisesByDay[day.key] || []).map((exerciseId) => {
+                            {(routineExercisesByDay[day.key] || []).map((exerciseId, itemIndex) => {
                               const base = exercises.find((ex) => ex.id === exerciseId);
-                              const override = routineCreateExerciseOverridesByDay[day.key]?.[exerciseId];
+                              const override = routineCreateExerciseOverridesByDay[day.key]?.[getRoutineEntryKey(exerciseId, itemIndex)];
                               return (
-                                <HStack key={`summary-ex-${day.key}-${exerciseId}`} spacing={2} align="center">
+                                <HStack key={`summary-ex-${day.key}-${itemIndex}-${exerciseId}`} spacing={2} align="center">
                                   <Stack spacing={0} flex="1">
                                     <Text fontSize="sm" color="gray.700">
                                       {base?.name || `Ejercicio #${exerciseId}`}
@@ -3216,7 +3326,7 @@ function App() {
                                       variant="ghost"
                                       minW="auto"
                                       px={2}
-                                      onClick={() => openRoutineCreateEditExercise(day.key, exerciseId)}
+                                      onClick={() => openRoutineCreateEditExercise(day.key, exerciseId, itemIndex)}
                                     >
                                       <Image src={editIconUrl} alt="Editar" boxSize={actionIconSize} />
                                     </Button>
@@ -3227,7 +3337,7 @@ function App() {
                                       borderColor="gray.300"
                                       color="black"
                                       _hover={{ bg: "red.700", borderColor: "red.800", color: "white" }}
-                                      onClick={() => removeExerciseFromRoutineSummaryDay(day.key, exerciseId)}
+                                      onClick={() => removeExerciseFromRoutineSummaryDay(day.key, itemIndex)}
                                     >
                                       <Box
                                         as="svg"
@@ -3461,10 +3571,7 @@ function App() {
                         String(exercise.distance_m).includes(term)
                       );
                     })
-                    .filter((exercise) => {
-                      if (!routineCreateAddExerciseDayKey) return false;
-                      return !(routineExercisesByDay[routineCreateAddExerciseDayKey] || []).includes(exercise.id);
-                    })
+                    .filter((_exercise) => Boolean(routineCreateAddExerciseDayKey))
                     .map((exercise) => (
                       <HStack key={`create-day-add-${exercise.id}`} justify="space-between" borderWidth="1px" borderColor="gray.200" borderRadius="8px" p={3}>
                         <Stack spacing={0}>
@@ -3504,6 +3611,10 @@ function App() {
           onClose={() => {
             setRoutineCreateEditExerciseModalOpen(false);
             setRoutineCreateEditTarget(null);
+            setRoutineCreateEditRounds("");
+            setRoutineCreateEditArrows("");
+            setRoutineCreateEditDistance("");
+            setRoutineCreateEditDescription("");
           }}
           isCentered
         >
@@ -3512,16 +3623,47 @@ function App() {
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between">
                 <Text fontWeight="700" color="gray.900">Editar ejercicio</Text>
-                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => setRoutineCreateEditExerciseModalOpen(false)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  color="gray.400"
+                  _hover={{ bg: "gray.100", color: "gray.700" }}
+                  onClick={() => {
+                    setRoutineCreateEditExerciseModalOpen(false);
+                    setRoutineCreateEditTarget(null);
+                    setRoutineCreateEditRounds("");
+                    setRoutineCreateEditArrows("");
+                    setRoutineCreateEditDistance("");
+                    setRoutineCreateEditDescription("");
+                  }}
+                >
                   ×
                 </Button>
               </HStack>
             </ModalHeader>
             <ModalBody>
               <Stack spacing={4}>
-                <SimpleGrid columns={2} spacing={3}>
+                <SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
                   <FormControl>
-                    <FormLabel color="gray.700" fontSize="sm">Flechas</FormLabel>
+                    <FormLabel color="gray.700" fontSize="sm">Rondas</FormLabel>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      min={1}
+                      step={1}
+                      value={routineCreateEditRounds}
+                      onChange={(e) => setRoutineCreateEditRounds(normalizeInt(e.target.value))}
+                      onKeyDown={(e) => blockInvalidKeys(e, false)}
+                      onBeforeInput={handleBeforeInputInt}
+                      onPaste={handlePasteInt}
+                      borderColor="gray.300"
+                      borderRadius="8px"
+                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel color="gray.700" fontSize="sm">Flechas por ronda</FormLabel>
                     <Input
                       type="number"
                       inputMode="numeric"
@@ -3572,10 +3714,31 @@ function App() {
             </ModalBody>
             <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
               <HStack spacing={3}>
-                <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={() => setRoutineCreateEditExerciseModalOpen(false)}>
+                <Button
+                  bg="white"
+                  color="black"
+                  borderColor="gray.300"
+                  borderWidth="1px"
+                  _hover={{ bg: "gray.100" }}
+                  onClick={() => {
+                    setRoutineCreateEditExerciseModalOpen(false);
+                    setRoutineCreateEditTarget(null);
+                    setRoutineCreateEditRounds("");
+                    setRoutineCreateEditArrows("");
+                    setRoutineCreateEditDistance("");
+                    setRoutineCreateEditDescription("");
+                  }}
+                >
                   Cancelar
                 </Button>
-                <Button bg="#f97316" color="white" _hover={{ bg: "#ea580c" }} _active={{ bg: "#c2410c" }} onClick={saveRoutineCreateEditExercise}>
+                <Button
+                  bg="#f97316"
+                  color="white"
+                  _hover={{ bg: "#ea580c" }}
+                  _active={{ bg: "#c2410c" }}
+                  isDisabled={routineCreateEditRounds === "" || routineCreateEditArrows === "" || routineCreateEditDistance === ""}
+                  onClick={saveRoutineCreateEditExercise}
+                >
                   Guardar
                 </Button>
               </HStack>
@@ -4230,13 +4393,7 @@ function App() {
                   {assignRoutineStep === "existing_preview" && <Text fontSize="sm" color="gray.500">Paso 4: Configurar ejercicios y días</Text>}
                   {assignRoutineStep === "existing_dates" && <Text fontSize="sm" color="gray.500">Paso 5: Seleccionar fechas y notas</Text>}
                 </Stack>
-                {assignRoutineStep === "existing_preview" || assignRoutineStep === "existing_dates" ? (
-                  <Button variant="ghost" size="sm" color="gray.500" _hover={{ bg: "gray.100", color: "gray.700" }} aria-label="Configuración">
-                    ⚙
-                  </Button>
-                ) : (
-                  <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={closeAssignRoutineModal}>×</Button>
-                )}
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={closeAssignRoutineModal}>×</Button>
               </HStack>
             </ModalHeader>
             <ModalBody
@@ -4504,11 +4661,11 @@ function App() {
                         {day.label}
                       </Text>
                       <Stack spacing={1} mt={2}>
-                        {(routineAssignExercisesByDay[day.key] || []).map((exerciseId) => {
+                        {(routineAssignExercisesByDay[day.key] || []).map((exerciseId, itemIndex) => {
                           const base = exercises.find((ex) => ex.id === exerciseId);
-                          const override = routineAssignExerciseOverridesByDay[day.key]?.[exerciseId];
+                          const override = routineAssignExerciseOverridesByDay[day.key]?.[getRoutineEntryKey(exerciseId, itemIndex)];
                           return (
-                            <HStack key={`assign-summary-ex-${day.key}-${exerciseId}`} spacing={2} align="center">
+                            <HStack key={`assign-summary-ex-${day.key}-${itemIndex}-${exerciseId}`} spacing={2} align="center">
                               <Stack spacing={0} flex="1">
                                 <Text fontSize="sm" color="gray.700">
                                   {base?.name || `Ejercicio #${exerciseId}`}
@@ -4523,7 +4680,7 @@ function App() {
                                   variant="ghost"
                                   minW="auto"
                                   px={2}
-                                  onClick={() => openEditAssignExercise(day.key, exerciseId)}
+                                  onClick={() => openEditAssignExercise(day.key, exerciseId, itemIndex)}
                                 >
                                   <Image src={editIconUrl} alt="Editar" boxSize={actionIconSize} />
                                 </Button>
@@ -4534,7 +4691,7 @@ function App() {
                                   borderColor="gray.300"
                                   color="black"
                                   _hover={{ bg: "red.700", borderColor: "red.800", color: "white" }}
-                                  onClick={() => removeAssignExerciseFromDay(day.key, exerciseId)}
+                                  onClick={() => removeAssignExerciseFromDay(day.key, itemIndex)}
                                 >
                                   <Box
                                     as="svg"
@@ -4738,16 +4895,59 @@ function App() {
           onClose={() => {
             setEditAssignExerciseModalOpen(false);
             setEditAssignExerciseTarget(null);
+            setEditAssignRounds("");
+            setEditAssignArrows("");
+            setEditAssignDistance("");
+            setEditAssignDescription("");
           }}
           isCentered
         >
-          <ModalOverlay />
-          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "700px" }} maxH="90vh">
-            <ModalHeader>Editar ejercicio temporal</ModalHeader>
-            <ModalBody>
-              <Stack spacing={3}>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
+            <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
+              <HStack justify="space-between">
+                <Text fontWeight="700" color="gray.900">Editar ejercicio temporal</Text>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  color="gray.400"
+                  _hover={{ bg: "gray.100", color: "gray.700" }}
+                  onClick={() => {
+                    setEditAssignExerciseModalOpen(false);
+                    setEditAssignExerciseTarget(null);
+                    setEditAssignRounds("");
+                    setEditAssignArrows("");
+                    setEditAssignDistance("");
+                    setEditAssignDescription("");
+                  }}
+                >
+                  ×
+                </Button>
+              </HStack>
+            </ModalHeader>
+            <ModalBody maxH="70vh" overflowY="auto" py={5}>
+              <Stack spacing={4}>
+                <SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
                 <FormControl>
-                  <FormLabel>Flechas</FormLabel>
+                  <FormLabel color="gray.700" fontSize="sm">Rondas</FormLabel>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    min={1}
+                    step={1}
+                    value={editAssignRounds}
+                    onChange={(e) => setEditAssignRounds(normalizeInt(e.target.value))}
+                    onKeyDown={(e) => blockInvalidKeys(e, false)}
+                    onBeforeInput={handleBeforeInputInt}
+                    onPaste={handlePasteInt}
+                    borderColor="gray.300"
+                    borderRadius="8px"
+                    _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                  />
+                </FormControl>
+                <FormControl>
+                  <FormLabel color="gray.700" fontSize="sm">Flechas por ronda</FormLabel>
                   <Input
                     type="number"
                     inputMode="numeric"
@@ -4759,10 +4959,13 @@ function App() {
                     onKeyDown={(e) => blockInvalidKeys(e, false)}
                     onBeforeInput={handleBeforeInputInt}
                     onPaste={handlePasteInt}
+                    borderColor="gray.300"
+                    borderRadius="8px"
+                    _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
                   />
                 </FormControl>
                 <FormControl>
-                  <FormLabel>Distancia (m)</FormLabel>
+                  <FormLabel color="gray.700" fontSize="sm">Distancia (m)</FormLabel>
                   <Input
                     type="number"
                     inputMode="decimal"
@@ -4773,26 +4976,55 @@ function App() {
                     onKeyDown={(e) => blockInvalidKeys(e, true)}
                     onBeforeInput={handleBeforeInputFloat}
                     onPaste={handlePasteFloat}
+                    borderColor="gray.300"
+                    borderRadius="8px"
+                    _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
                   />
                 </FormControl>
+                </SimpleGrid>
                 <FormControl>
-                  <FormLabel>Descripción</FormLabel>
-                  <Textarea value={editAssignDescription} onChange={(e) => setEditAssignDescription(e.target.value)} minH="120px" resize="vertical" />
+                  <FormLabel color="gray.700" fontSize="sm">Descripción</FormLabel>
+                  <Textarea
+                    value={editAssignDescription}
+                    onChange={(e) => setEditAssignDescription(e.target.value)}
+                    minH="120px"
+                    resize="vertical"
+                    borderColor="gray.300"
+                    borderRadius="8px"
+                    _hover={{ borderColor: "gray.500" }}
+                    _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                    fontSize="md"
+                  />
                 </FormControl>
               </Stack>
             </ModalBody>
-            <ModalFooter>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
               <HStack spacing={3}>
                 <Button
-                  variant="ghost"
+                  bg="white"
+                  color="black"
+                  borderColor="gray.300"
+                  borderWidth="1px"
+                  _hover={{ bg: "gray.100" }}
                   onClick={() => {
                     setEditAssignExerciseModalOpen(false);
                     setEditAssignExerciseTarget(null);
+                    setEditAssignRounds("");
+                    setEditAssignArrows("");
+                    setEditAssignDistance("");
+                    setEditAssignDescription("");
                   }}
                 >
                   Cancelar
                 </Button>
-                <Button bg="black" color="white" _hover={{ bg: "gray.800" }} _active={{ bg: "gray.900" }} onClick={saveEditAssignExercise}>
+                <Button
+                  bg="#f97316"
+                  color="white"
+                  _hover={{ bg: "#ea580c" }}
+                  _active={{ bg: "#c2410c" }}
+                  isDisabled={editAssignRounds === "" || editAssignArrows === "" || editAssignDistance === ""}
+                  onClick={saveEditAssignExercise}
+                >
                   Guardar
                 </Button>
               </HStack>
@@ -4843,10 +5075,7 @@ function App() {
                         String(exercise.distance_m).includes(term)
                       );
                     })
-                    .filter((exercise) => {
-                      if (!addExerciseTargetDayKey) return false;
-                      return !(routineAssignExercisesByDay[addExerciseTargetDayKey] || []).includes(exercise.id);
-                    })
+                    .filter((_exercise) => Boolean(addExerciseTargetDayKey))
                     .map((exercise) => (
                       <HStack key={`add-day-ex-${exercise.id}`} justify="space-between" borderWidth="1px" borderColor="gray.200" borderRadius="8px" p={3}>
                         <Stack spacing={0}>
@@ -4938,36 +5167,57 @@ function App() {
           </ModalContent>
         </Modal>
         <Modal isOpen={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} isCentered>
-          <ModalOverlay />
-          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh">
-            <ModalHeader>¿Eliminar ejercicio?</ModalHeader>
-            <ModalBody>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
+            <ModalBody py={8}>
+              <Stack spacing={4} align="center" textAlign="center">
+                <Box w="56px" h="56px" borderRadius="full" bg="#fee2e2" display="flex" alignItems="center" justifyContent="center">
+                  <Box
+                    as="svg"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    boxSize="20px"
+                    fill="none"
+                    stroke="#ef4444"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </Box>
+                </Box>
+                <Text fontSize="2xl" fontWeight="700" color="gray.900">¿Eliminar ejercicio?</Text>
               {deleteError && (
                 <Alert status="error" borderRadius="md" mb={3}>
                   <AlertIcon />
                   {deleteError}
                 </Alert>
               )}
-              <Text color="gray.700">Esta acción eliminará el ejercicio seleccionado.</Text>
+                <Text color="gray.500">Esta acción eliminará el ejercicio seleccionado.</Text>
+              </Stack>
             </ModalBody>
-            <ModalFooter>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.100" py={4}>
               <HStack spacing={3}>
                 <Button
                   bg="white"
-                  color="black"
-                  borderColor="gray.300"
+                  color="#ef4444"
+                  borderColor="#fecaca"
                   borderWidth="1px"
-                  _hover={{ bg: "gray.100" }}
+                  _hover={{ bg: "#fef2f2" }}
                   onClick={handleDeleteConfirm}
                   isLoading={deleteLoading}
                 >
                   Eliminar
                 </Button>
                 <Button
-                  bg="black"
+                  bg="#f97316"
                   color="white"
-                  _hover={{ bg: "gray.800" }}
-                  _active={{ bg: "gray.900" }}
+                  _hover={{ bg: "#ea580c" }}
+                  _active={{ bg: "#c2410c" }}
                   onClick={() => setDeleteModalOpen(false)}
                   isDisabled={deleteLoading}
                 >

@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS exercises (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name VARCHAR(120) NOT NULL,
   arrows_count INT UNSIGNED NOT NULL,           -- cantidad de flechas a tirar
+  rounds INT UNSIGNED NOT NULL DEFAULT 1,       -- cantidad de rondas
+  arrows_per_round INT UNSIGNED NOT NULL DEFAULT 0, -- flechas por ronda
   distance_m DECIMAL(6,2) UNSIGNED NOT NULL,    -- distancia en metros (18.00, 70.00, etc.)
   description TEXT NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
@@ -44,6 +46,8 @@ CREATE TABLE IF NOT EXISTS exercises (
   KEY idx_exercises_active (is_active),
   KEY idx_exercises_name (name),
   CONSTRAINT chk_exercises_arrows_positive CHECK (arrows_count >= 0),
+  CONSTRAINT chk_exercises_rounds_positive CHECK (rounds > 0),
+  CONSTRAINT chk_exercises_arrows_per_round_positive CHECK (arrows_per_round >= 0),
   CONSTRAINT chk_exercises_distance_positive CHECK (distance_m >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

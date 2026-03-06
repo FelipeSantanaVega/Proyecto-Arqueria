@@ -13,6 +13,7 @@ function ExercisesSection({
   setCreateModalOpen,
   setEditExercise,
   setEditName,
+  setEditRounds,
   setEditArrows,
   setEditDistance,
   setEditDescription,
@@ -96,7 +97,8 @@ function ExercisesSection({
                   e.stopPropagation();
                   setEditExercise(ex);
                   setEditName(ex.name);
-                  setEditArrows(ex.arrows_count);
+                  setEditRounds(ex.rounds ?? 1);
+                  setEditArrows(ex.arrows_per_round ?? ex.arrows_count);
                   setEditDistance(ex.distance_m);
                   setEditDescription(ex.description || "");
                   setEditError(null);
