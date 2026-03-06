@@ -10,6 +10,8 @@ export type Exercise = {
   id: number;
   name: string;
   arrows_count: number;
+  rounds?: number;
+  arrows_per_round?: number;
   distance_m: number;
   description?: string;
   is_active: boolean;
@@ -141,4 +143,3 @@ export function useAppDataController(token: string | null) {
     setError,
   };
 }
-
