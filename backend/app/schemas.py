@@ -21,7 +21,7 @@ class LoginResponse(BaseModel):
 # Exercises
 class ExerciseBase(BaseModel):
     name: str
-    arrows_count: conint(ge=0)
+    arrows_count: Optional[conint(ge=0)] = None
     rounds: Optional[conint(ge=1)] = None
     arrows_per_round: Optional[conint(ge=0)] = None
     distance_m: confloat(ge=0)
