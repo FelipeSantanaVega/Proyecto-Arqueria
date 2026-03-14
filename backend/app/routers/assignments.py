@@ -285,6 +285,31 @@ def _build_effective_days(
                 if arrows is None:
                     arrows = int(exercise.arrows_count)
 
+                base_rounds = _to_int(getattr(exercise, "rounds", None))
+                if base_rounds is None or base_rounds <= 0:
+                    base_rounds = 1
+                base_arrows_per_round = _to_int(getattr(exercise, "arrows_per_round", None))
+                if base_arrows_per_round is None:
+                    base_arrows_per_round = int(exercise.arrows_count or 0)
+
+                rounds = _to_int(temp_override.get("rounds_override"))
+                arrows_per_round = _to_int(temp_override.get("arrows_per_round_override"))
+
+                if rounds is None and arrows_per_round is None:
+                    if arrows is not None and base_rounds > 0 and arrows % base_rounds == 0:
+                        rounds = base_rounds
+                        arrows_per_round = arrows // base_rounds
+                    else:
+                        rounds = base_rounds
+                        arrows_per_round = base_arrows_per_round
+                elif rounds is None:
+                    rounds = base_rounds if base_rounds > 0 else 1
+                elif arrows_per_round is None:
+                    if rounds > 0 and arrows is not None and arrows % rounds == 0:
+                        arrows_per_round = arrows // rounds
+                    else:
+                        arrows_per_round = base_arrows_per_round
+
                 distance = _to_float(temp_override.get("distance_override_m"))
                 if distance is None and base_item:
                     distance = _to_float(base_item.distance_override_m)
@@ -299,6 +324,8 @@ def _build_effective_days(
                     {
                         "name": exercise.name,
                         "arrows": arrows,
+                        "rounds": rounds,
+                        "arrows_per_round": arrows_per_round,
                         "distance": distance,
                         "description": (description or "").strip(),
                     }
@@ -309,6 +336,17 @@ def _build_effective_days(
                 arrows = _to_int(item.arrows_override)
                 if arrows is None:
                     arrows = int(exercise.arrows_count)
+
+                rounds = _to_int(getattr(exercise, "rounds", None))
+                if rounds is None or rounds <= 0:
+                    rounds = 1
+                arrows_per_round = _to_int(getattr(exercise, "arrows_per_round", None))
+                if arrows_per_round is None:
+                    if rounds > 0 and arrows is not None and arrows % rounds == 0:
+                        arrows_per_round = arrows // rounds
+                    else:
+                        arrows_per_round = int(exercise.arrows_count or 0)
+
                 distance = _to_float(item.distance_override_m)
                 if distance is None:
                     distance = float(exercise.distance_m)
@@ -317,6 +355,8 @@ def _build_effective_days(
                     {
                         "name": exercise.name,
                         "arrows": arrows,
+                        "rounds": rounds,
+                        "arrows_per_round": arrows_per_round,
                         "distance": distance,
                         "description": description,
                     }
@@ -507,6 +547,27 @@ def export_assignment_pdf(
                             x_cursor += pdf.stringWidth(part, font_name, size) + gap_width
             y -= leading
 
+    def write_multiline_notes(
+        text: str,
+        *,
+        size: int = 12,
+        leading: float = 5.2 * mm,
+    ):
+        nonlocal y
+        if not text:
+            return
+        for raw_line in text.splitlines():
+            if not raw_line.strip():
+                y -= leading
+                ensure_space()
+                continue
+            write_wrapped(
+                raw_line,
+                size=size,
+                bold=False,
+                leading=leading,
+            )
+
     def format_distance(distance: float) -> str:
         if float(distance).is_integer():
             return str(int(distance))
@@ -540,15 +601,11 @@ def export_assignment_pdf(
     clean_professor_notes = (professor_notes or "").strip()
     if clean_professor_notes:
         write_line("Notas del profesor:", size=12, bold=True, step=5.2 * mm)
-        for line in professor_notes.splitlines():
-            if not line.strip():
-                y -= line_h
-                continue
-            write_wrapped_justify(
-                line,
-                size=12,
-                leading=5.2 * mm,
-            )
+        write_multiline_notes(
+            professor_notes,
+            size=12,
+            leading=5.2 * mm,
+        )
         y -= 0.8 * mm
 
     # Contenido por día.
@@ -568,11 +625,16 @@ def export_assignment_pdf(
             for item in items:
                 name = str(item["name"]).strip()
                 arrows = int(item["arrows"])
+                rounds = max(int(item.get("rounds") or 1), 1)
+                arrows_per_round = max(int(item.get("arrows_per_round") or 0), 0)
                 distance = float(item["distance"])
                 description = str(item["description"]).strip()
 
                 write_wrapped_justify(
-                    f"• Tirar a {format_distance(distance)} metros : {name} ({arrows} disparos).",
+                    (
+                        f"• {name}: {rounds} rondas x {arrows_per_round} disparos - "
+                        f"{format_distance(distance)} metros - {arrows} disparos."
+                    ),
                     size=12,
                     leading=5.2 * mm,
                 )
