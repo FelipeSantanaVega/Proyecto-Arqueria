@@ -1091,6 +1091,19 @@ function App() {
   const currentRoutineDayLabel = currentRoutineDay?.label || "";
   const exerciseNameById = useMemo(() => new Map(exercises.map((ex) => [ex.id, ex.name])), [exercises]);
   const exerciseArrowsById = useMemo(() => new Map(exercises.map((ex) => [ex.id, ex.arrows_count])), [exercises]);
+  const getSummaryDayArrows = useCallback(
+    (
+      exerciseIds: number[],
+      dayKey: string,
+      overridesByDay: Record<string, Record<string, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>>,
+    ) =>
+      exerciseIds.reduce((sum, exerciseId, itemIndex) => {
+        const override = overridesByDay[dayKey]?.[getRoutineEntryKey(exerciseId, itemIndex)];
+        if (typeof override?.arrows_override === "number") return sum + override.arrows_override;
+        return sum + Number(exerciseArrowsById.get(exerciseId) ?? 0);
+      }, 0),
+    [exerciseArrowsById],
+  );
   const sortedRoutines = useMemo(
     () => [...templateRoutines].sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" })),
     [templateRoutines],
@@ -3303,9 +3316,18 @@ function App() {
                     >
                       {routineBuilderDays.map((day) => (
                         <Box key={`summary-${day.key}`} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={3}>
-                          <Text color="gray.800" fontWeight="medium">
-                            {day.label}
-                          </Text>
+                          <HStack justify="space-between" align="baseline">
+                            <Text color="gray.800" fontWeight="medium">
+                              {day.label}
+                            </Text>
+                            <Text fontSize="sm" color="gray.500">
+                              {getSummaryDayArrows(
+                                routineExercisesByDay[day.key] || [],
+                                day.key,
+                                routineCreateExerciseOverridesByDay,
+                              )} flechas
+                            </Text>
+                          </HStack>
                           <Stack spacing={1} mt={2}>
                             {(routineExercisesByDay[day.key] || []).map((exerciseId, itemIndex) => {
                               const base = exercises.find((ex) => ex.id === exerciseId);
@@ -4657,9 +4679,18 @@ function App() {
                       borderRadius="10px"
                       p={4}
                     >
-                      <Text color="gray.800" fontWeight="semibold" mb={2}>
-                        {day.label}
-                      </Text>
+                      <HStack justify="space-between" align="baseline" mb={2}>
+                        <Text color="gray.800" fontWeight="semibold">
+                          {day.label}
+                        </Text>
+                        <Text fontSize="sm" color="gray.500">
+                          {getSummaryDayArrows(
+                            routineAssignExercisesByDay[day.key] || [],
+                            day.key,
+                            routineAssignExerciseOverridesByDay,
+                          )} flechas
+                        </Text>
+                      </HStack>
                       <Stack spacing={1} mt={2}>
                         {(routineAssignExercisesByDay[day.key] || []).map((exerciseId, itemIndex) => {
                           const base = exercises.find((ex) => ex.id === exerciseId);
