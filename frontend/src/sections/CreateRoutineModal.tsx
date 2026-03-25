@@ -13,11 +13,8 @@ import {
   Input,
   InputGroup,
   InputLeftElement,
-  ModalBody,
   Modal,
   ModalContent,
-  ModalFooter,
-  ModalHeader,
   ModalOverlay,
   SimpleGrid,
   Stack,
@@ -71,6 +68,8 @@ function CreateRoutineModal({
   setRoutineModalStep,
   assignmentStartDate,
   assignmentEndDate,
+  setAssignmentStartDate,
+  setAssignmentEndDate,
   assignmentStartDatePickerRef,
   assignmentEndDatePickerRef,
   formatDateEs,
@@ -117,7 +116,7 @@ function CreateRoutineModal({
   setAssignmentProfessorNotes,
 }: Props) {
   return (
-    <Modal isLazy lazyBehavior="unmount" isOpen={createRoutineModalOpen} onClose={closeCreateRoutineModal} isCentered>
+    <Modal isOpen={createRoutineModalOpen} onClose={closeCreateRoutineModal} isCentered>
       <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
       <ModalContent
         maxW={{ base: "calc(100vw - 1rem)", md: routineModalMaxW }}

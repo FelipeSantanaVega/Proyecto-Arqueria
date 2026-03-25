@@ -1132,6 +1132,7 @@ function App() {
   );
   const currentRoutineDay = routineBuilderDays[routineDayCursor] || null;
   const currentRoutineDayKey = currentRoutineDay?.key || null;
+  const currentRoutineDayExercises = currentRoutineDayKey ? (routineExercisesByDay[currentRoutineDayKey] || []) : [];
   const currentRoutineDayLabel = currentRoutineDay?.label || "";
   const exerciseNameById = useMemo(() => new Map(exercises.map((ex) => [ex.id, ex.name])), [exercises]);
   const exerciseArrowsById = useMemo(() => new Map(exercises.map((ex) => [ex.id, ex.arrows_count])), [exercises]);
@@ -2898,7 +2899,7 @@ function App() {
             </Stack>
           </GridItem>
         </Grid>
-        <Modal isLazy lazyBehavior="unmount" isOpen={editModalOpen} onClose={() => setEditModalOpen(false)} isCentered>
+        <Modal isOpen={editModalOpen} onClose={() => setEditModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
@@ -3017,7 +3018,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isLazy lazyBehavior="unmount" isOpen={createModalOpen} onClose={closeCreateExerciseModal} isCentered>
+        <Modal isOpen={createModalOpen} onClose={closeCreateExerciseModal} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
@@ -3158,6 +3159,8 @@ function App() {
           setRoutineModalStep={setRoutineModalStep}
           assignmentStartDate={assignmentStartDate}
           assignmentEndDate={assignmentEndDate}
+          setAssignmentStartDate={setAssignmentStartDate}
+          setAssignmentEndDate={setAssignmentEndDate}
           assignmentStartDatePickerRef={assignmentStartDatePickerRef}
           assignmentEndDatePickerRef={assignmentEndDatePickerRef}
           formatDateEs={formatDateEs}
@@ -3204,7 +3207,7 @@ function App() {
           setAssignmentProfessorNotes={setAssignmentProfessorNotes}
         />
         {false && (
-        <Modal isLazy lazyBehavior="unmount" isOpen={createRoutineModalOpen} onClose={closeCreateRoutineModal} isCentered>
+        <Modal isOpen={createRoutineModalOpen} onClose={closeCreateRoutineModal} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent
             maxW={{ base: "calc(100vw - 1rem)", md: routineModalMaxW }}
@@ -3478,8 +3481,7 @@ function App() {
                   </InputGroup>
                   <Stack spacing={2} maxH="300px" overflowY="auto" pr={1} mt={4}>
                     {filteredRoutineExercises.map((ex) => {
-                      const selectedForCurrentDay =
-                        !!currentRoutineDayKey && (routineExercisesByDay[currentRoutineDayKey] || []).includes(ex.id);
+                      const selectedForCurrentDay = currentRoutineDayExercises.includes(ex.id);
                       return (
                         <Box
                           key={ex.id}
@@ -3548,7 +3550,7 @@ function App() {
                       color="white"
                       _hover={{ bg: "#ea580c" }}
                       _active={{ bg: "#c2410c" }}
-                      isDisabled={!currentRoutineDayKey || (routineExercisesByDay[currentRoutineDayKey] || []).length === 0}
+                      isDisabled={!currentRoutineDayKey || currentRoutineDayExercises.length === 0}
                       isLoading={createRoutineLoading}
                       onClick={handleRoutineExerciseContinue}
                     >
@@ -3813,7 +3815,7 @@ function App() {
           </ModalContent>
         </Modal>
         )}
-        <Modal isLazy lazyBehavior="unmount" isOpen={routineCreateAddExerciseModalOpen} onClose={() => setRoutineCreateAddExerciseModalOpen(false)} isCentered>
+        <Modal isOpen={routineCreateAddExerciseModalOpen} onClose={() => setRoutineCreateAddExerciseModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "620px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
@@ -4031,7 +4033,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isLazy lazyBehavior="unmount" isOpen={deleteRoutineDayConfirmOpen} onClose={() => setDeleteRoutineDayConfirmOpen(false)} isCentered>
+        <Modal isOpen={deleteRoutineDayConfirmOpen} onClose={() => setDeleteRoutineDayConfirmOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
@@ -4090,7 +4092,7 @@ function App() {
             </ModalBody>
           </ModalContent>
         </Modal>
-        <Modal isLazy lazyBehavior="unmount" isOpen={createStudentModalOpen} onClose={() => setCreateStudentModalOpen(false)} isCentered>
+        <Modal isOpen={createStudentModalOpen} onClose={() => setCreateStudentModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
@@ -4231,7 +4233,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isLazy lazyBehavior="unmount" isOpen={editStudentModalOpen} onClose={() => setEditStudentModalOpen(false)} isCentered>
+        <Modal isOpen={editStudentModalOpen} onClose={() => setEditStudentModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
@@ -4353,8 +4355,6 @@ function App() {
           </ModalContent>
         </Modal>
         <Modal
-          isLazy
-          lazyBehavior="unmount"
           isOpen={studentHistoryModalOpen}
           onClose={() => {
             setStudentHistoryModalOpen(false);
@@ -4569,8 +4569,6 @@ function App() {
           </ModalContent>
         </Modal>
         <Modal
-          isLazy
-          lazyBehavior="unmount"
           isOpen={adminAssignModalOpen}
           onClose={closeAdminAssignModal}
           isCentered
@@ -4728,7 +4726,7 @@ function App() {
           setAssignRoutineStep={setAssignRoutineStep}
         />
         {false && (
-        <Modal isLazy lazyBehavior="unmount" isOpen={assignRoutineModalOpen} onClose={closeAssignRoutineModal} isCentered>
+        <Modal isOpen={assignRoutineModalOpen} onClose={closeAssignRoutineModal} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent
             maxW={{ base: "calc(100vw - 1rem)", md: "760px" }}
@@ -4966,7 +4964,7 @@ function App() {
                                 ? `${buttonAnimation === "up" ? routineOrderButtonMoveUp : routineOrderButtonMoveDown} 0.28s cubic-bezier(0.22, 1, 0.36, 1)`
                                 : undefined
                             }
-                            backfaceVisibility="hidden"
+                            sx={{ backfaceVisibility: "hidden" }}
                             willChange="transform, top, box-shadow"
                             transition={isDragging
                               ? "box-shadow 0.12s ease, border-color 0.12s ease, background-color 0.12s ease, opacity 0.12s ease"
@@ -5596,7 +5594,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isLazy lazyBehavior="unmount" isOpen={addExerciseDayModalOpen} onClose={() => setAddExerciseDayModalOpen(false)} isCentered>
+        <Modal isOpen={addExerciseDayModalOpen} onClose={() => setAddExerciseDayModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "620px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
@@ -5672,7 +5670,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isLazy lazyBehavior="unmount" isOpen={deleteAssignDayConfirmOpen} onClose={() => setDeleteAssignDayConfirmOpen(false)} isCentered>
+        <Modal isOpen={deleteAssignDayConfirmOpen} onClose={() => setDeleteAssignDayConfirmOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
@@ -5731,7 +5729,7 @@ function App() {
             </ModalBody>
           </ModalContent>
         </Modal>
-        <Modal isLazy lazyBehavior="unmount" isOpen={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} isCentered>
+        <Modal isOpen={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
@@ -5792,7 +5790,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isLazy lazyBehavior="unmount" isOpen={deleteRoutineModalOpen} onClose={() => setDeleteRoutineModalOpen(false)} isCentered>
+        <Modal isOpen={deleteRoutineModalOpen} onClose={() => setDeleteRoutineModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
@@ -5856,8 +5854,6 @@ function App() {
           </ModalContent>
         </Modal>
         <Modal
-          isLazy
-          lazyBehavior="unmount"
           isOpen={saveAssignmentModalOpen}
           onClose={() => {
             setSaveAssignmentModalOpen(false);
@@ -5927,7 +5923,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isLazy lazyBehavior="unmount" isOpen={deleteAssignedRoutineModalOpen} onClose={() => setDeleteAssignedRoutineModalOpen(false)} isCentered>
+        <Modal isOpen={deleteAssignedRoutineModalOpen} onClose={() => setDeleteAssignedRoutineModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
@@ -5990,7 +5986,7 @@ function App() {
             </ModalBody>
           </ModalContent>
         </Modal>
-        <Modal isLazy lazyBehavior="unmount" isOpen={replaceAssignModalOpen} onClose={() => { void handleCancelReplaceAndAssign(); }} isCentered>
+        <Modal isOpen={replaceAssignModalOpen} onClose={() => { void handleCancelReplaceAndAssign(); }} isCentered>
           <ModalOverlay />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh">
             <ModalHeader>
@@ -6032,7 +6028,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isLazy lazyBehavior="unmount" isOpen={preAssignConflictModalOpen} onClose={() => setPreAssignConflictModalOpen(false)} isCentered>
+        <Modal isOpen={preAssignConflictModalOpen} onClose={() => setPreAssignConflictModalOpen(false)} isCentered>
           <ModalOverlay />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh">
             <ModalHeader>
@@ -6078,7 +6074,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isLazy lazyBehavior="unmount" isOpen={deactivateModalOpen} onClose={() => setDeactivateModalOpen(false)} isCentered>
+        <Modal isOpen={deactivateModalOpen} onClose={() => setDeactivateModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "460px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
@@ -6150,7 +6146,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isLazy lazyBehavior="unmount" isOpen={activateModalOpen} onClose={() => setActivateModalOpen(false)} isCentered>
+        <Modal isOpen={activateModalOpen} onClose={() => setActivateModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "460px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>

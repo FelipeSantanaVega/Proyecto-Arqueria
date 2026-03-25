@@ -5,7 +5,6 @@ import {
   Badge,
   Box,
   Button,
-  Collapse,
   Flex,
   FormControl,
   FormLabel,
@@ -169,7 +168,7 @@ function AssignRoutineModal({
   ]);
 
   return (
-    <Modal isLazy lazyBehavior="unmount" isOpen={assignRoutineModalOpen} onClose={closeAssignRoutineModal} isCentered>
+    <Modal isOpen={assignRoutineModalOpen} onClose={closeAssignRoutineModal} isCentered>
       <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
       <ModalContent
         maxW={{ base: "calc(100vw - 1rem)", md: "760px" }}
@@ -314,7 +313,7 @@ function AssignRoutineModal({
                             boxShadow={isDragging ? "0 20px 44px rgba(15, 23, 42, 0.20)" : "none"}
                             transform={isDragging ? "translate3d(0, 0, 0) translateZ(0) scale(1.01)" : hoverTranslateY !== 0 ? `translate3d(0, ${hoverTranslateY}px, 0) translateZ(0)` : "translate3d(0, 0, 0) translateZ(0)"}
                             animation={!isDragging && buttonAnimation ? `${buttonAnimation === "up" ? routineOrderButtonMoveUp : routineOrderButtonMoveDown} 0.28s cubic-bezier(0.22, 1, 0.36, 1)` : undefined}
-                            backfaceVisibility="hidden"
+                            sx={{ backfaceVisibility: "hidden" }}
                             willChange="transform, top, box-shadow"
                             transition={isDragging ? "box-shadow 0.12s ease, border-color 0.12s ease, background-color 0.12s ease, opacity 0.12s ease" : "transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.22s ease, border-color 0.22s ease, background-color 0.22s ease, opacity 0.22s ease"}
                             onMouseDown={(e) => handleRoutineOrderDragStart(e, routine.id)}
