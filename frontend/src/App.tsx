@@ -9,6 +9,7 @@ import {
   Container,
   Collapse,
   Divider,
+  Flex,
   FormControl,
   FormLabel,
   Grid,
@@ -46,6 +47,8 @@ import { apiFetch, API_BASE } from "./api";
 import { AppDataProvider } from "./context/AppDataContext";
 import { ProfessorListsProvider } from "./context/ProfessorListsContext";
 import { useAppDataController } from "./context/useAppDataController";
+import AssignRoutineModal from "./sections/AssignRoutineModal";
+import CreateRoutineModal from "./sections/CreateRoutineModal";
 
 const routineDaySlide = keyframes`
   from {
@@ -66,6 +69,24 @@ const routineStepSlide = keyframes`
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+`;
+
+const routineOrderButtonMoveUp = keyframes`
+  from {
+    transform: translate3d(0, 64px, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+`;
+
+const routineOrderButtonMoveDown = keyframes`
+  from {
+    transform: translate3d(0, -64px, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
   }
 `;
 
@@ -503,6 +524,13 @@ function getHistoryRoutineDisplayName(name: string | null | undefined): string {
   return cleaned || "Rutina temporal";
 }
 
+function buildCombinedRoutineBaseName(routines: Routine[]): string {
+  const names = routines.map((routine) => routine.name.trim()).filter(Boolean);
+  if (!names.length) return "Rutina temporal";
+  const combined = names.join(" + ");
+  return combined.length > 120 ? combined.slice(0, 120) : combined;
+}
+
 function parseRoleFromToken(rawToken: string | null): string | null {
   if (!rawToken) return null;
   try {
@@ -569,8 +597,20 @@ function App() {
   const [createRoutineError, setCreateRoutineError] = useState<string | null>(null);
   const [assignRoutineModalOpen, setAssignRoutineModalOpen] = useState(false);
   const [assignRoutineStudent, setAssignRoutineStudent] = useState<Student | null>(null);
-  const [assignRoutineStep, setAssignRoutineStep] = useState<"choice" | "existing_list" | "existing_days" | "existing_preview" | "existing_dates">("choice");
+  const [assignRoutineStep, setAssignRoutineStep] = useState<"choice" | "existing_list" | "existing_order" | "existing_days" | "existing_preview" | "existing_dates">("choice");
   const [selectedRoutineToAssign, setSelectedRoutineToAssign] = useState<Routine | null>(null);
+  const [selectedRoutineIdsToAssign, setSelectedRoutineIdsToAssign] = useState<number[]>([]);
+  const [draggingRoutineOrderId, setDraggingRoutineOrderId] = useState<number | null>(null);
+  const [hoveredRoutineOrderId, setHoveredRoutineOrderId] = useState<number | null>(null);
+  const [draggingRoutineOrderTop, setDraggingRoutineOrderTop] = useState<number | null>(null);
+  const [draggingRoutineOrderLeft, setDraggingRoutineOrderLeft] = useState<number | null>(null);
+  const [draggingRoutineOrderWidth, setDraggingRoutineOrderWidth] = useState<number | null>(null);
+  const [draggingRoutineOrderHeight, setDraggingRoutineOrderHeight] = useState<number>(0);
+  const draggingRoutinePointerOffsetYRef = useRef(0);
+  const routineOrderItemRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const routineOrderContainerRef = useRef<HTMLDivElement | null>(null);
+  const routineOrderButtonAnimationTimeoutRef = useRef<number | null>(null);
+  const [routineOrderButtonAnimationById, setRoutineOrderButtonAnimationById] = useState<Record<number, "up" | "down">>({});
   const [assignRoutineError, setAssignRoutineError] = useState<string | null>(null);
   const [assignRoutineLoading, setAssignRoutineLoading] = useState(false);
   const [assignmentStartDate, setAssignmentStartDate] = useState<string>(getTodayIsoLocal());
@@ -688,7 +728,7 @@ function App() {
   const [rememberMe, setRememberMe] = useState<boolean>(() => localStorage.getItem("remember_me") !== "0");
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
-  const appData = useAppDataController(token);
+  const appData = useAppDataController(token, { view, activeSection: view === "professor" ? profSection : null });
   const {
     health,
     exercises,
@@ -701,6 +741,10 @@ function App() {
     setAssignments,
     loading,
     error,
+    ensureExercisesLoaded,
+    ensureRoutinesLoaded,
+    ensureStudentsLoaded,
+    ensureAssignmentsLoaded,
   } = appData;
 
   useEffect(() => {
@@ -1108,6 +1152,15 @@ function App() {
     () => [...templateRoutines].sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" })),
     [templateRoutines],
   );
+  const selectedRoutinesToAssign = useMemo(
+    () => {
+      const routineById = new Map(sortedRoutines.map((routine) => [routine.id, routine]));
+      return selectedRoutineIdsToAssign
+        .map((id) => routineById.get(id))
+        .filter((routine): routine is Routine => Boolean(routine));
+    },
+    [sortedRoutines, selectedRoutineIdsToAssign],
+  );
   const routineModalMaxW = routineModalStep === 0 ? "520px" : routineModalStep === 1 ? "640px" : routineModalStep === 4 ? "700px" : "760px";
   const routineModalMinHeight = routineModalStep === 0
     ? 320
@@ -1189,19 +1242,22 @@ function App() {
     return () => observer.disconnect();
   }, [createRoutineModalOpen, routineModalStep, routineDayCursor, routineModalMinHeight, routineModalMaxBodyHeight]);
 
-  const getRoutineDayArrows = (day: RoutineDay) =>
+  const getRoutineDayArrows = useCallback((day: RoutineDay) =>
     day.exercises.reduce((sum, dayExercise) => {
       if (typeof dayExercise.arrows_override === "number") return sum + dayExercise.arrows_override;
       return sum + (exerciseArrowsById.get(dayExercise.exercise_id) || 0);
-    }, 0);
+    }, 0),
+  [exerciseArrowsById]);
 
-  const getRoutineWeekArrows = (routine: Routine) => routine.days.reduce((sum, day) => sum + getRoutineDayArrows(day), 0);
+  const getRoutineWeekArrows = useCallback((routine: Routine) => routine.days.reduce((sum, day) => sum + getRoutineDayArrows(day), 0), [getRoutineDayArrows]);
 
   const openAdminAssignModal = useCallback(() => {
+    void ensureStudentsLoaded();
+    void ensureAssignmentsLoaded();
     setAdminAssignSearch("");
     setAdminAssignSelectedStudentId(null);
     setAdminAssignModalOpen(true);
-  }, []);
+  }, [ensureAssignmentsLoaded, ensureStudentsLoaded]);
 
   const closeAdminAssignModal = useCallback(() => {
     setAdminAssignModalOpen(false);
@@ -1238,6 +1294,9 @@ function App() {
   }, []);
 
   const openAssignRoutineModal = useCallback((student: Student) => {
+    void ensureRoutinesLoaded();
+    void ensureExercisesLoaded();
+    void ensureAssignmentsLoaded();
     const existingActive = assignments
       .filter((a) => a.student_id === student.id && a.status === "active")
       .sort((a, b) => (b.start_date || "").localeCompare(a.start_date || ""))[0];
@@ -1252,19 +1311,21 @@ function App() {
     setAssignRoutineStudent(student);
     setAssignRoutineStep("choice");
     setSelectedRoutineToAssign(null);
+    setSelectedRoutineIdsToAssign([]);
     setAssignRoutineError(null);
     setAssignRoutineLoading(false);
     setAssignmentStartDate(getTodayIsoLocal());
     setAssignmentEndDate(addDaysIso(getTodayIsoLocal(), 1));
     resetAssignRoutineDraft();
     setAssignRoutineModalOpen(true);
-  }, [assignments, resetAssignRoutineDraft]);
+  }, [assignments, ensureAssignmentsLoaded, ensureExercisesLoaded, ensureRoutinesLoaded, resetAssignRoutineDraft]);
 
   const closeAssignRoutineModal = useCallback(() => {
     setAssignRoutineModalOpen(false);
     setAssignRoutineStudent(null);
     setAssignRoutineStep("choice");
     setSelectedRoutineToAssign(null);
+    setSelectedRoutineIdsToAssign([]);
     setAssignRoutineError(null);
     setAssignRoutineLoading(false);
     setAssignmentStartDate(getTodayIsoLocal());
@@ -1349,6 +1410,7 @@ function App() {
   }, [goToView, setStudents]);
 
   const openCreateRoutineModal = useCallback(() => {
+    void ensureExercisesLoaded();
     setEditingRoutineId(null);
     setRoutineName("");
     setRoutineDayCount(1);
@@ -1372,7 +1434,7 @@ function App() {
     setCreateRoutineError(null);
     setRoutineModalStep(0);
     setCreateRoutineModalOpen(true);
-  }, []);
+  }, [ensureExercisesLoaded]);
 
   const closeCreateRoutineModal = useCallback(() => {
     setCreateRoutineModalOpen(false);
@@ -1402,6 +1464,7 @@ function App() {
   }, []);
 
   const openEditRoutineModal = useCallback((routine: Routine) => {
+    void ensureExercisesLoaded();
     const sortedDays = [...routine.days].sort((a, b) => a.day_number - b.day_number);
     const exercisesByDay: Record<string, number[]> = {};
     const overridesByDay: Record<string, Record<string, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
@@ -1451,7 +1514,7 @@ function App() {
     setCreateRoutineLoading(false);
     setRoutineModalStep(0);
     setCreateRoutineModalOpen(true);
-  }, []);
+  }, [ensureExercisesLoaded]);
 
   const toggleRoutineExerciseForDay = (dayKey: string, exerciseId: number) => {
     setRoutineExercisesByDay((prev) => {
@@ -1735,6 +1798,7 @@ function App() {
     setAssignRoutineModalOpen(false);
     setAssignRoutineStep("choice");
     setSelectedRoutineToAssign(null);
+    setSelectedRoutineIdsToAssign([]);
     setAssignRoutineError(null);
     setAssignRoutineLoading(false);
     resetAssignRoutineDraft();
@@ -1746,6 +1810,7 @@ function App() {
     closeCreateRoutineModal();
     setAssignRoutineStep("choice");
     setSelectedRoutineToAssign(null);
+    setSelectedRoutineIdsToAssign([]);
     setAssignRoutineError(null);
     setAssignRoutineLoading(false);
     setAssignmentStartDate(getTodayIsoLocal());
@@ -1756,6 +1821,7 @@ function App() {
   const handleChooseExistingRoutineList = () => {
     setAssignRoutineStep("existing_days");
     setSelectedRoutineToAssign(null);
+    setSelectedRoutineIdsToAssign([]);
     setAssignRoutineError(null);
     resetAssignRoutineDraft();
   };
@@ -1808,8 +1874,10 @@ function App() {
     }
   }, [token, routines, setRoutines]);
 
-  const handleSelectRoutineToAssign = (routine: Routine) => {
-    const orderedDays = [...routine.days].sort((a, b) => a.day_number - b.day_number);
+  const loadRoutineIntoAssignPreview = (routinesToCombine: Routine[]) => {
+    const orderedDays = routinesToCombine
+      .flatMap((routine) => [...routine.days].sort((a, b) => a.day_number - b.day_number))
+      .slice(0, 7);
     const nextExercisesByDay: Record<string, number[]> = {};
     const nextOverridesByDay: Record<string, Record<string, { arrows_override?: number | null; distance_override_m?: number | null; description_override?: string | null }>> = {};
     orderedDays.forEach((day, index) => {
@@ -1830,7 +1898,7 @@ function App() {
         };
       });
     });
-    setSelectedRoutineToAssign(routine);
+    setSelectedRoutineToAssign(routinesToCombine[0] || null);
     const totalDays = Math.max(1, Math.min(7, orderedDays.length || 1));
     const selectedDaysFromDates = Math.max(1, Math.min(7, getDayCountFromRange(assignmentStartDate, assignmentEndDate)));
     const selectedDays = totalDays;
@@ -1853,6 +1921,134 @@ function App() {
     setDeleteAssignDayConfirmOpen(false);
     setDeleteAssignDayTargetNumber(null);
   };
+
+  const handleSelectRoutineToAssign = (routine: Routine) => {
+    setSelectedRoutineIdsToAssign((prev) => {
+      const exists = prev.includes(routine.id);
+      if (exists) {
+        return prev.filter((id) => id !== routine.id);
+      }
+      return [...prev, routine.id];
+    });
+  };
+
+  const handleContinueToRoutineOrder = () => {
+    if (!selectedRoutinesToAssign.length) return;
+    if (selectedRoutinesToAssign.length === 1) {
+      loadRoutineIntoAssignPreview(selectedRoutinesToAssign);
+      return;
+    }
+    setAssignRoutineStep("existing_order");
+    setAssignRoutineError(null);
+  };
+
+  const handleContinueFromRoutineOrder = () => {
+    if (!selectedRoutinesToAssign.length) return;
+    loadRoutineIntoAssignPreview(selectedRoutinesToAssign);
+  };
+
+  const moveSelectedRoutineOrder = (routineId: number, direction: -1 | 1) => {
+    setSelectedRoutineIdsToAssign((prev) => {
+      const currentIndex = prev.indexOf(routineId);
+      if (currentIndex === -1) return prev;
+      const nextIndex = currentIndex + direction;
+      if (nextIndex < 0 || nextIndex >= prev.length) return prev;
+      const swappedRoutineId = prev[nextIndex];
+      const next = [...prev];
+      const [moved] = next.splice(currentIndex, 1);
+      next.splice(nextIndex, 0, moved);
+
+      if (routineOrderButtonAnimationTimeoutRef.current !== null) {
+        window.clearTimeout(routineOrderButtonAnimationTimeoutRef.current);
+      }
+      setRoutineOrderButtonAnimationById({
+        [routineId]: direction === -1 ? "up" : "down",
+        [swappedRoutineId]: direction === -1 ? "down" : "up",
+      });
+      routineOrderButtonAnimationTimeoutRef.current = window.setTimeout(() => {
+        setRoutineOrderButtonAnimationById({});
+      }, 320);
+      return next;
+    });
+  };
+
+  const handleRoutineOrderDragStart = (event: React.MouseEvent<HTMLDivElement>, routineId: number) => {
+    const element = routineOrderItemRefs.current[routineId];
+    if (!element) return;
+    const rect = element.getBoundingClientRect();
+    setDraggingRoutineOrderId(routineId);
+    setHoveredRoutineOrderId(null);
+    setDraggingRoutineOrderTop(rect.top);
+    setDraggingRoutineOrderLeft(rect.left);
+    setDraggingRoutineOrderWidth(rect.width);
+    setDraggingRoutineOrderHeight(rect.height);
+    draggingRoutinePointerOffsetYRef.current = event.clientY - rect.top;
+  };
+
+  const handleRoutineOrderDragEnd = () => {
+    setDraggingRoutineOrderId(null);
+    setHoveredRoutineOrderId(null);
+    setDraggingRoutineOrderTop(null);
+    setDraggingRoutineOrderLeft(null);
+    setDraggingRoutineOrderWidth(null);
+    setDraggingRoutineOrderHeight(0);
+  };
+
+  useEffect(() => {
+    if (draggingRoutineOrderId === null) return;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const containerRect = routineOrderContainerRef.current?.getBoundingClientRect();
+      const rawTop = event.clientY - draggingRoutinePointerOffsetYRef.current;
+      const minTop = containerRect?.top ?? rawTop;
+      const maxTop = containerRect ? containerRect.bottom - draggingRoutineOrderHeight : rawTop;
+      const clampedTop = Math.min(Math.max(rawTop, minTop), Math.max(minTop, maxTop));
+      setDraggingRoutineOrderTop(clampedTop);
+
+      let nextHoveredId: number | null = null;
+      for (const routine of selectedRoutinesToAssign) {
+        if (routine.id === draggingRoutineOrderId) continue;
+        const element = routineOrderItemRefs.current[routine.id];
+        if (!element) continue;
+        const rect = element.getBoundingClientRect();
+        const midpoint = rect.top + rect.height / 2;
+        if (event.clientY < midpoint) {
+          nextHoveredId = routine.id;
+          break;
+        }
+        nextHoveredId = routine.id;
+      }
+      setHoveredRoutineOrderId(nextHoveredId);
+    };
+
+    const handleMouseUp = () => {
+      if (hoveredRoutineOrderId !== null) {
+        setSelectedRoutineIdsToAssign((prev) => {
+          const sourceIndex = prev.indexOf(draggingRoutineOrderId);
+          const targetIndex = prev.indexOf(hoveredRoutineOrderId);
+          if (sourceIndex === -1 || targetIndex === -1) return prev;
+          const next = [...prev];
+          const [moved] = next.splice(sourceIndex, 1);
+          next.splice(targetIndex, 0, moved);
+          return next;
+        });
+      }
+      handleRoutineOrderDragEnd();
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [draggingRoutineOrderId, hoveredRoutineOrderId, selectedRoutinesToAssign]);
+
+  useEffect(() => () => {
+    if (routineOrderButtonAnimationTimeoutRef.current !== null) {
+      window.clearTimeout(routineOrderButtonAnimationTimeoutRef.current);
+    }
+  }, []);
 
   const openEditAssignExercise = (dayKey: string, exerciseId: number, itemIndex: number) => {
     const base = exercises.find((ex) => ex.id === exerciseId);
@@ -2012,11 +2208,11 @@ function App() {
 
       const temporaryRoutinePayload = {
         name: buildTemporaryRoutineName(
-          selectedRoutineToAssign.name,
+          buildCombinedRoutineBaseName(selectedRoutinesToAssign),
           assignRoutineStudent.document_number || String(assignRoutineStudent.id),
           assignmentStartDate,
         ),
-        description: selectedRoutineToAssign.description || null,
+        description: selectedRoutinesToAssign.map((routine) => routine.name).join(" + ") || selectedRoutineToAssign.description || null,
         is_active: true,
         is_template: false,
         days: sanitizedDays,
@@ -2037,6 +2233,7 @@ function App() {
         notes: JSON.stringify({
           source: "existing_template_assignment",
           source_routine_id: selectedRoutineToAssign.id,
+          source_routine_ids: selectedRoutinesToAssign.map((routine) => routine.id),
           assigned_routine_id: createdTemporaryRoutine.id,
           objective: assignmentObjective.trim() || "Determinante",
           professor_notes: assignmentProfessorNotes.trim() || null,
@@ -2701,7 +2898,7 @@ function App() {
             </Stack>
           </GridItem>
         </Grid>
-        <Modal isOpen={editModalOpen} onClose={() => setEditModalOpen(false)} isCentered>
+        <Modal isLazy lazyBehavior="unmount" isOpen={editModalOpen} onClose={() => setEditModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
@@ -2820,7 +3017,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={createModalOpen} onClose={closeCreateExerciseModal} isCentered>
+        <Modal isLazy lazyBehavior="unmount" isOpen={createModalOpen} onClose={closeCreateExerciseModal} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
@@ -2941,7 +3138,73 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={createRoutineModalOpen} onClose={closeCreateRoutineModal} isCentered>
+        <CreateRoutineModal
+          createRoutineModalOpen={createRoutineModalOpen}
+          closeCreateRoutineModal={closeCreateRoutineModal}
+          routineModalMaxW={routineModalMaxW}
+          routineModalStep={routineModalStep}
+          routineModalBodyHeight={routineModalBodyHeight}
+          routineModalMinHeight={routineModalMinHeight}
+          routineStepRef={routineStepRef}
+          editingRoutineId={editingRoutineId}
+          routineName={routineName}
+          setRoutineName={setRoutineName}
+          routineAssignStudentId={routineAssignStudentId}
+          handleBackToAssignOptionsFromCreate={handleBackToAssignOptionsFromCreate}
+          setRoutineDayCount={setRoutineDayCount}
+          setRoutineDayCursor={setRoutineDayCursor}
+          setRoutineExerciseSearch={setRoutineExerciseSearch}
+          setCreateRoutineError={setCreateRoutineError}
+          setRoutineModalStep={setRoutineModalStep}
+          assignmentStartDate={assignmentStartDate}
+          assignmentEndDate={assignmentEndDate}
+          assignmentStartDatePickerRef={assignmentStartDatePickerRef}
+          assignmentEndDatePickerRef={assignmentEndDatePickerRef}
+          formatDateEs={formatDateEs}
+          getTodayIsoLocal={getTodayIsoLocal}
+          isEndAfterStart={isEndAfterStart}
+          addDaysIso={addDaysIso}
+          getDayCountFromRange={getDayCountFromRange}
+          VerticalDayWheelPicker={VerticalDayWheelPicker}
+          routineDayCount={routineDayCount}
+          routineDayInitialLimit={routineDayInitialLimit}
+          setRoutineDayInitialLimit={setRoutineDayInitialLimit}
+          currentRoutineDayKey={currentRoutineDayKey}
+          currentRoutineDayLabel={currentRoutineDayLabel}
+          routineDayCursor={routineDayCursor}
+          routineExerciseSearch={routineExerciseSearch}
+          filteredRoutineExercises={filteredRoutineExercises}
+          routineExercisesByDay={routineExercisesByDay}
+          toggleRoutineExerciseForDay={toggleRoutineExerciseForDay}
+          setCreateModalOpen={setCreateModalOpen}
+          bowIconUrl={bowIconUrl}
+          createRoutineError={createRoutineError}
+          createRoutineLoading={createRoutineLoading}
+          handleRoutineExerciseContinue={handleRoutineExerciseContinue}
+          routineBuilderDays={routineBuilderDays}
+          routineSummaryListRef={routineSummaryListRef}
+          routineSummaryListMaxH={routineSummaryListMaxH}
+          handleRoutineSummaryWheel={handleRoutineSummaryWheel}
+          getSummaryDayArrows={getSummaryDayArrows}
+          routineCreateExerciseOverridesByDay={routineCreateExerciseOverridesByDay}
+          exercises={exercises}
+          getRoutineEntryKey={getRoutineEntryKey}
+          actionIconButtonSize={actionIconButtonSize}
+          actionIconSize={actionIconSize}
+          editIconUrl={editIconUrl}
+          openRoutineCreateEditExercise={openRoutineCreateEditExercise}
+          removeExerciseFromRoutineSummaryDay={removeExerciseFromRoutineSummaryDay}
+          openRoutineCreateAddExercise={openRoutineCreateAddExercise}
+          requestDeleteRoutineDay={requestDeleteRoutineDay}
+          handleAddRoutineDay={handleAddRoutineDay}
+          handleCreateOrUpdateRoutineFromSummary={handleCreateOrUpdateRoutineFromSummary}
+          assignmentObjective={assignmentObjective}
+          setAssignmentObjective={setAssignmentObjective}
+          assignmentProfessorNotes={assignmentProfessorNotes}
+          setAssignmentProfessorNotes={setAssignmentProfessorNotes}
+        />
+        {false && (
+        <Modal isLazy lazyBehavior="unmount" isOpen={createRoutineModalOpen} onClose={closeCreateRoutineModal} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent
             maxW={{ base: "calc(100vw - 1rem)", md: routineModalMaxW }}
@@ -3549,7 +3812,8 @@ function App() {
             </Box>
           </ModalContent>
         </Modal>
-        <Modal isOpen={routineCreateAddExerciseModalOpen} onClose={() => setRoutineCreateAddExerciseModalOpen(false)} isCentered>
+        )}
+        <Modal isLazy lazyBehavior="unmount" isOpen={routineCreateAddExerciseModalOpen} onClose={() => setRoutineCreateAddExerciseModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "620px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
@@ -3767,7 +4031,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={deleteRoutineDayConfirmOpen} onClose={() => setDeleteRoutineDayConfirmOpen(false)} isCentered>
+        <Modal isLazy lazyBehavior="unmount" isOpen={deleteRoutineDayConfirmOpen} onClose={() => setDeleteRoutineDayConfirmOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
@@ -3826,7 +4090,7 @@ function App() {
             </ModalBody>
           </ModalContent>
         </Modal>
-        <Modal isOpen={createStudentModalOpen} onClose={() => setCreateStudentModalOpen(false)} isCentered>
+        <Modal isLazy lazyBehavior="unmount" isOpen={createStudentModalOpen} onClose={() => setCreateStudentModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
@@ -3967,7 +4231,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={editStudentModalOpen} onClose={() => setEditStudentModalOpen(false)} isCentered>
+        <Modal isLazy lazyBehavior="unmount" isOpen={editStudentModalOpen} onClose={() => setEditStudentModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
@@ -4089,6 +4353,8 @@ function App() {
           </ModalContent>
         </Modal>
         <Modal
+          isLazy
+          lazyBehavior="unmount"
           isOpen={studentHistoryModalOpen}
           onClose={() => {
             setStudentHistoryModalOpen(false);
@@ -4303,6 +4569,8 @@ function App() {
           </ModalContent>
         </Modal>
         <Modal
+          isLazy
+          lazyBehavior="unmount"
           isOpen={adminAssignModalOpen}
           onClose={closeAdminAssignModal}
           isCentered
@@ -4390,7 +4658,77 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={assignRoutineModalOpen} onClose={closeAssignRoutineModal} isCentered>
+        <AssignRoutineModal
+          assignRoutineModalOpen={assignRoutineModalOpen}
+          closeAssignRoutineModal={closeAssignRoutineModal}
+          assignRoutineStep={assignRoutineStep}
+          assignRoutineStudent={assignRoutineStudent}
+          handleChooseCreateRoutineForStudent={handleChooseCreateRoutineForStudent}
+          handleChooseExistingRoutineList={handleChooseExistingRoutineList}
+          sortedRoutines={sortedRoutines}
+          selectedRoutineIdsToAssign={selectedRoutineIdsToAssign}
+          selectedRoutinesToAssign={selectedRoutinesToAssign}
+          handleSelectRoutineToAssign={handleSelectRoutineToAssign}
+          getRoutineWeekArrows={getRoutineWeekArrows}
+          routineOrderContainerRef={routineOrderContainerRef}
+          routineOrderItemRefs={routineOrderItemRefs}
+          routineOrderButtonAnimationById={routineOrderButtonAnimationById}
+          hoveredRoutineOrderId={hoveredRoutineOrderId}
+          draggingRoutineOrderId={draggingRoutineOrderId}
+          draggingRoutineOrderHeight={draggingRoutineOrderHeight}
+          draggingRoutineOrderTop={draggingRoutineOrderTop}
+          draggingRoutineOrderLeft={draggingRoutineOrderLeft}
+          draggingRoutineOrderWidth={draggingRoutineOrderWidth}
+          handleRoutineOrderDragStart={handleRoutineOrderDragStart}
+          moveSelectedRoutineOrder={moveSelectedRoutineOrder}
+          assignmentStartDate={assignmentStartDate}
+          assignmentEndDate={assignmentEndDate}
+          setAssignmentStartDate={setAssignmentStartDate}
+          setAssignmentEndDate={setAssignmentEndDate}
+          assignmentStartDatePickerRef={assignmentStartDatePickerRef}
+          assignmentEndDatePickerRef={assignmentEndDatePickerRef}
+          formatDateEs={formatDateEs}
+          addDaysIso={addDaysIso}
+          getTodayIsoLocal={getTodayIsoLocal}
+          isEndAfterStart={isEndAfterStart}
+          getDayCountFromRange={getDayCountFromRange}
+          selectedRoutineToAssign={selectedRoutineToAssign}
+          assignRoutineSummaryListRef={assignRoutineSummaryListRef}
+          routineAssignSummaryListMaxH={routineAssignSummaryListMaxH}
+          handleAssignRoutineSummaryWheel={handleAssignRoutineSummaryWheel}
+          routineAssignBuilderDays={routineAssignBuilderDays}
+          isAssignPreviewOverDayLimit={isAssignPreviewOverDayLimit}
+          assignPreviewExcessDays={assignPreviewExcessDays}
+          getSummaryDayArrows={getSummaryDayArrows}
+          routineAssignExercisesByDay={routineAssignExercisesByDay}
+          routineAssignExerciseOverridesByDay={routineAssignExerciseOverridesByDay}
+          getRoutineEntryKey={getRoutineEntryKey}
+          exercises={exercises}
+          actionIconButtonSize={actionIconButtonSize}
+          actionIconSize={actionIconSize}
+          editIconUrl={editIconUrl}
+          openEditAssignExercise={openEditAssignExercise}
+          removeAssignExerciseFromDay={removeAssignExerciseFromDay}
+          openAddExerciseForDay={openAddExerciseForDay}
+          routineAssignDayCount={routineAssignDayCount}
+          requestDeleteAssignRoutineDay={requestDeleteAssignRoutineDay}
+          routineAssignDayInitialLimit={routineAssignDayInitialLimit}
+          addAssignRoutineDay={addAssignRoutineDay}
+          assignmentObjective={assignmentObjective}
+          setAssignmentObjective={setAssignmentObjective}
+          assignmentProfessorNotes={assignmentProfessorNotes}
+          setAssignmentProfessorNotes={setAssignmentProfessorNotes}
+          assignRoutineError={assignRoutineError}
+          openAdminAssignModal={openAdminAssignModal}
+          setAssignRoutineModalOpen={setAssignRoutineModalOpen}
+          handleContinueToRoutineOrder={handleContinueToRoutineOrder}
+          handleContinueFromRoutineOrder={handleContinueFromRoutineOrder}
+          handleAssignExistingRoutine={handleAssignExistingRoutine}
+          assignRoutineLoading={assignRoutineLoading}
+          setAssignRoutineStep={setAssignRoutineStep}
+        />
+        {false && (
+        <Modal isLazy lazyBehavior="unmount" isOpen={assignRoutineModalOpen} onClose={closeAssignRoutineModal} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent
             maxW={{ base: "calc(100vw - 1rem)", md: "760px" }}
@@ -4411,16 +4749,17 @@ function App() {
                   </Text>
                   {assignRoutineStep === "choice" && <Text fontSize="sm" color="gray.500">Paso 2 de 4: Selecciona el método de asignación</Text>}
                   {assignRoutineStep === "existing_days" && <Text fontSize="sm" color="gray.500">Paso 3: Selecciona inicio y fin de rutina</Text>}
-                  {assignRoutineStep === "existing_list" && <Text fontSize="sm" color="gray.500">Paso 4: Selecciona una rutina pre cargada.</Text>}
-                  {assignRoutineStep === "existing_preview" && <Text fontSize="sm" color="gray.500">Paso 4: Configurar ejercicios y días</Text>}
-                  {assignRoutineStep === "existing_dates" && <Text fontSize="sm" color="gray.500">Paso 5: Seleccionar fechas y notas</Text>}
+                  {assignRoutineStep === "existing_list" && <Text fontSize="sm" color="gray.500">Paso 4: Selecciona una o más rutinas pre cargadas.</Text>}
+                  {assignRoutineStep === "existing_order" && <Text fontSize="sm" color="gray.500">Paso 5: Ordenar rutinas seleccionadas</Text>}
+                  {assignRoutineStep === "existing_preview" && <Text fontSize="sm" color="gray.500">Paso 6: Configurar ejercicios y días</Text>}
+                  {assignRoutineStep === "existing_dates" && <Text fontSize="sm" color="gray.500">Paso 7: Seleccionar fechas y notas</Text>}
                 </Stack>
                 <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={closeAssignRoutineModal}>×</Button>
               </HStack>
             </ModalHeader>
             <ModalBody
               py={5}
-              overflowY={assignRoutineStep === "existing_preview" || assignRoutineStep === "existing_list" ? "hidden" : "auto"}
+              overflowY={assignRoutineStep === "existing_preview" || assignRoutineStep === "existing_list" || assignRoutineStep === "existing_order" ? "hidden" : "auto"}
               display="flex"
               flexDirection="column"
               minH={0}
@@ -4522,29 +4861,194 @@ function App() {
               )}
               {assignRoutineStep === "existing_list" && (
                 <Stack spacing={3} flex="1" minH={0} overflowY="auto" pr={1}>
-                  {sortedRoutines.map((routine) => (
+                  {sortedRoutines.map((routine) => {
+                    const isSelected = selectedRoutineIdsToAssign.includes(routine.id);
+                    return (
                     <Box
                       key={routine.id}
                       p={3.5}
                       borderWidth="1px"
-                      borderColor="gray.200"
+                      borderColor={isSelected ? "#f97316" : "gray.200"}
+                      bg={isSelected ? "#fff7ed" : "white"}
                       borderRadius="8px"
                       cursor="pointer"
-                      _hover={{ borderColor: "gray.400" }}
+                      _hover={{ borderColor: isSelected ? "#f97316" : "gray.400" }}
                       onClick={() => handleSelectRoutineToAssign(routine)}
                     >
                       <HStack justify="space-between" align="center">
                         <Stack spacing={0}>
                           <Text color="gray.900" fontWeight="500">{routine.name}</Text>
                         </Stack>
-                        <Text color="gray.500" fontSize="sm">
-                          Flechas totales: {getRoutineWeekArrows(routine)}
-                        </Text>
+                        <HStack spacing={3}>
+                          <Text color="gray.500" fontSize="sm">
+                            Flechas totales: {getRoutineWeekArrows(routine)}
+                          </Text>
+                          {isSelected && (
+                            <Badge bg="#f97316" color="white" borderRadius="full" px={2} py={0.5}>✓</Badge>
+                          )}
+                        </HStack>
                       </HStack>
                     </Box>
-                  ))}
+                    );
+                  })}
                   {!sortedRoutines.length && <Text color="gray.600">No hay rutinas creadas.</Text>}
                 </Stack>
+              )}
+              {assignRoutineStep === "existing_order" && (
+                <Flex ref={routineOrderContainerRef} flex="1" minH={0} py={0}>
+                  <Box
+                    w="100%"
+                    bg="white"
+                  >
+                    <HStack justify="space-between" px={1} py={1} borderBottomWidth="1px" borderColor="gray.200">
+                      <Text fontWeight="700" color="gray.900">Ordenar rutinas</Text>
+                      <Text fontSize="sm" color="gray.500">
+                        {selectedRoutinesToAssign.length} seleccionada{selectedRoutinesToAssign.length === 1 ? "" : "s"}
+                      </Text>
+                    </HStack>
+                    <Stack spacing={4} px={1} py={4}>
+                      <Stack spacing={2}>
+                        {selectedRoutinesToAssign.map((routine, index) => {
+                          const isDragging = draggingRoutineOrderId === routine.id;
+                          const buttonAnimation = routineOrderButtonAnimationById[routine.id];
+                          const hoveredIndex = hoveredRoutineOrderId !== null ? selectedRoutinesToAssign.findIndex((item) => item.id === hoveredRoutineOrderId) : -1;
+                          const draggingIndex = draggingRoutineOrderId !== null ? selectedRoutinesToAssign.findIndex((item) => item.id === draggingRoutineOrderId) : -1;
+                          let hoverTranslateY = 0;
+                          if (
+                            !isDragging &&
+                            hoveredIndex !== -1 &&
+                            draggingIndex !== -1 &&
+                            hoveredIndex !== draggingIndex
+                          ) {
+                            const shift = draggingRoutineOrderHeight + 8;
+                            if (draggingIndex > hoveredIndex) {
+                              if (index >= hoveredIndex && index < draggingIndex) {
+                                hoverTranslateY = shift;
+                              }
+                            } else if (draggingIndex < hoveredIndex) {
+                              if (index > draggingIndex && index <= hoveredIndex) {
+                                hoverTranslateY = -shift;
+                              }
+                            }
+                          }
+                          return (
+                          <Box
+                            key={`selected-order-wrap-${routine.id}`}
+                            minH={isDragging ? `${draggingRoutineOrderHeight}px` : undefined}
+                          >
+                          <Box
+                            ref={(node) => {
+                              routineOrderItemRefs.current[routine.id] = node;
+                            }}
+                            p={3.5}
+                            borderWidth="1px"
+                            borderColor={isDragging ? "#f97316" : hoveredRoutineOrderId === routine.id ? "#fdba74" : "gray.200"}
+                            borderRadius="8px"
+                            bg={isDragging ? "#fff7ed" : "gray.50"}
+                            cursor={isDragging ? "grabbing" : "grab"}
+                            userSelect="none"
+                            position={isDragging ? "fixed" : "relative"}
+                            top={isDragging && draggingRoutineOrderTop !== null ? `${draggingRoutineOrderTop}px` : undefined}
+                            left={isDragging && draggingRoutineOrderLeft !== null ? `${draggingRoutineOrderLeft}px` : undefined}
+                            width={isDragging && draggingRoutineOrderWidth !== null ? `${draggingRoutineOrderWidth}px` : undefined}
+                            zIndex={isDragging ? 20 : 1}
+                            opacity={isDragging ? 0.96 : 1}
+                            boxShadow={isDragging ? "0 20px 44px rgba(15, 23, 42, 0.20)" : "none"}
+                            transform={
+                              isDragging
+                                ? "translate3d(0, 0, 0) translateZ(0) scale(1.01)"
+                                : hoverTranslateY !== 0
+                                  ? `translate3d(0, ${hoverTranslateY}px, 0) translateZ(0)`
+                                  : "translate3d(0, 0, 0) translateZ(0)"
+                            }
+                            animation={
+                              !isDragging && buttonAnimation
+                                ? `${buttonAnimation === "up" ? routineOrderButtonMoveUp : routineOrderButtonMoveDown} 0.28s cubic-bezier(0.22, 1, 0.36, 1)`
+                                : undefined
+                            }
+                            backfaceVisibility="hidden"
+                            willChange="transform, top, box-shadow"
+                            transition={isDragging
+                              ? "box-shadow 0.12s ease, border-color 0.12s ease, background-color 0.12s ease, opacity 0.12s ease"
+                              : "transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.22s ease, border-color 0.22s ease, background-color 0.22s ease, opacity 0.22s ease"}
+                            visibility={isDragging ? "visible" : "visible"}
+                            onMouseDown={(e) => handleRoutineOrderDragStart(e, routine.id)}
+                          >
+                            <HStack justify="space-between" align="center">
+                              <Text color="gray.900" fontWeight="500">{routine.name}</Text>
+                              <HStack spacing={1}>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  minW="32px"
+                                  h="32px"
+                                  p={0}
+                                  color="gray.500"
+                                  _hover={{ bg: "gray.100", color: "gray.700" }}
+                                  isDisabled={index === 0}
+                                  onMouseDown={(e) => {
+                                    e.stopPropagation();
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    moveSelectedRoutineOrder(routine.id, -1);
+                                  }}
+                                >
+                                  <Box
+                                    as="svg"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    boxSize="18px"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <path d="m18 15-6-6-6 6" />
+                                  </Box>
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  minW="32px"
+                                  h="32px"
+                                  p={0}
+                                  color="gray.500"
+                                  _hover={{ bg: "gray.100", color: "gray.700" }}
+                                  isDisabled={index === selectedRoutinesToAssign.length - 1}
+                                  onMouseDown={(e) => {
+                                    e.stopPropagation();
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    moveSelectedRoutineOrder(routine.id, 1);
+                                  }}
+                                >
+                                  <Box
+                                    as="svg"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    boxSize="18px"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <path d="m6 9 6 6 6-6" />
+                                  </Box>
+                                </Button>
+                              </HStack>
+                            </HStack>
+                          </Box>
+                          </Box>
+                          );
+                        })}
+                      </Stack>
+                    </Stack>
+                  </Box>
+                </Flex>
               )}
               {assignRoutineStep === "existing_days" && (
                 <Stack spacing={5} py={2}>
@@ -4856,9 +5360,38 @@ function App() {
                   </Button>
                 )}
                 {assignRoutineStep === "existing_list" && (
-                  <Button variant="outline" borderColor="gray.300" onClick={() => setAssignRoutineStep("existing_days")}>
-                    Volver
-                  </Button>
+                  <>
+                    <Button variant="outline" borderColor="gray.300" onClick={() => setAssignRoutineStep("existing_days")}>
+                      Volver
+                    </Button>
+                    <Button
+                      bg="#f97316"
+                      color="white"
+                      _hover={{ bg: "#ea580c" }}
+                      _active={{ bg: "#c2410c" }}
+                      isDisabled={!selectedRoutinesToAssign.length}
+                      onClick={handleContinueToRoutineOrder}
+                    >
+                      Siguiente
+                    </Button>
+                  </>
+                )}
+                {assignRoutineStep === "existing_order" && (
+                  <>
+                    <Button variant="outline" borderColor="gray.300" onClick={() => setAssignRoutineStep("existing_list")}>
+                      Volver
+                    </Button>
+                    <Button
+                      bg="#f97316"
+                      color="white"
+                      _hover={{ bg: "#ea580c" }}
+                      _active={{ bg: "#c2410c" }}
+                      isDisabled={!selectedRoutinesToAssign.length}
+                      onClick={handleContinueFromRoutineOrder}
+                    >
+                      Siguiente
+                    </Button>
+                  </>
                 )}
                 {assignRoutineStep === "existing_days" && (
                   <>
@@ -4879,7 +5412,7 @@ function App() {
                 )}
                 {assignRoutineStep === "existing_preview" && (
                   <>
-                    <Button variant="outline" borderColor="gray.300" onClick={() => setAssignRoutineStep("existing_list")}>
+                    <Button variant="outline" borderColor="gray.300" onClick={() => setAssignRoutineStep("existing_order")}>
                       Volver
                     </Button>
                     <Button
@@ -4921,6 +5454,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
+        )}
         <Modal
           isOpen={editAssignExerciseModalOpen}
           onClose={() => {
@@ -5062,7 +5596,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={addExerciseDayModalOpen} onClose={() => setAddExerciseDayModalOpen(false)} isCentered>
+        <Modal isLazy lazyBehavior="unmount" isOpen={addExerciseDayModalOpen} onClose={() => setAddExerciseDayModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "620px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
@@ -5138,7 +5672,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={deleteAssignDayConfirmOpen} onClose={() => setDeleteAssignDayConfirmOpen(false)} isCentered>
+        <Modal isLazy lazyBehavior="unmount" isOpen={deleteAssignDayConfirmOpen} onClose={() => setDeleteAssignDayConfirmOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
@@ -5197,7 +5731,7 @@ function App() {
             </ModalBody>
           </ModalContent>
         </Modal>
-        <Modal isOpen={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} isCentered>
+        <Modal isLazy lazyBehavior="unmount" isOpen={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
@@ -5258,7 +5792,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={deleteRoutineModalOpen} onClose={() => setDeleteRoutineModalOpen(false)} isCentered>
+        <Modal isLazy lazyBehavior="unmount" isOpen={deleteRoutineModalOpen} onClose={() => setDeleteRoutineModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
@@ -5322,6 +5856,8 @@ function App() {
           </ModalContent>
         </Modal>
         <Modal
+          isLazy
+          lazyBehavior="unmount"
           isOpen={saveAssignmentModalOpen}
           onClose={() => {
             setSaveAssignmentModalOpen(false);
@@ -5391,7 +5927,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={deleteAssignedRoutineModalOpen} onClose={() => setDeleteAssignedRoutineModalOpen(false)} isCentered>
+        <Modal isLazy lazyBehavior="unmount" isOpen={deleteAssignedRoutineModalOpen} onClose={() => setDeleteAssignedRoutineModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
@@ -5454,7 +5990,7 @@ function App() {
             </ModalBody>
           </ModalContent>
         </Modal>
-        <Modal isOpen={replaceAssignModalOpen} onClose={() => { void handleCancelReplaceAndAssign(); }} isCentered>
+        <Modal isLazy lazyBehavior="unmount" isOpen={replaceAssignModalOpen} onClose={() => { void handleCancelReplaceAndAssign(); }} isCentered>
           <ModalOverlay />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh">
             <ModalHeader>
@@ -5496,7 +6032,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={preAssignConflictModalOpen} onClose={() => setPreAssignConflictModalOpen(false)} isCentered>
+        <Modal isLazy lazyBehavior="unmount" isOpen={preAssignConflictModalOpen} onClose={() => setPreAssignConflictModalOpen(false)} isCentered>
           <ModalOverlay />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh">
             <ModalHeader>
@@ -5542,7 +6078,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={deactivateModalOpen} onClose={() => setDeactivateModalOpen(false)} isCentered>
+        <Modal isLazy lazyBehavior="unmount" isOpen={deactivateModalOpen} onClose={() => setDeactivateModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "460px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
@@ -5614,7 +6150,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={activateModalOpen} onClose={() => setActivateModalOpen(false)} isCentered>
+        <Modal isLazy lazyBehavior="unmount" isOpen={activateModalOpen} onClose={() => setActivateModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "460px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>

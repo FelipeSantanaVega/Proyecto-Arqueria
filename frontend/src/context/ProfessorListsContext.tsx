@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useAppData } from "./AppDataContext";
 
 type ExerciseLite = {
@@ -47,6 +47,8 @@ export function ProfessorListsProvider({ children }: Props) {
   const [exerciseVisibleCount, setExerciseVisibleCount] = useState(PAGE_SIZE);
   const [activeStudentsVisibleCount, setActiveStudentsVisibleCount] = useState(PAGE_SIZE);
   const [inactiveStudentsVisibleCount, setInactiveStudentsVisibleCount] = useState(PAGE_SIZE);
+  const deferredExerciseSearch = useDeferredValue(exerciseSearch);
+  const deferredStudentSearch = useDeferredValue(studentSearch);
 
   const sortedStudents = useMemo(
     () => [...students].sort((a, b) => a.full_name.localeCompare(b.full_name, "es")),
@@ -62,7 +64,7 @@ export function ProfessorListsProvider({ children }: Props) {
   );
 
   const filteredExercises = useMemo(() => {
-    const term = exerciseSearch.trim().toLowerCase();
+    const term = deferredExerciseSearch.trim().toLowerCase();
     if (!term) return exercises;
     return exercises.filter((ex) => {
       const byName = ex.name.toLowerCase().includes(term);
@@ -71,10 +73,10 @@ export function ProfessorListsProvider({ children }: Props) {
       const byDistance = String(ex.distance_m).includes(term);
       return byName || byDescription || byArrows || byDistance;
     });
-  }, [exercises, exerciseSearch]);
+  }, [exercises, deferredExerciseSearch]);
 
   const filteredActiveStudents = useMemo(() => {
-    const term = studentSearch.trim().toLowerCase();
+    const term = deferredStudentSearch.trim().toLowerCase();
     if (!term) return activeStudents;
     return activeStudents.filter((s) => {
       const byName = s.full_name.toLowerCase().includes(term);
@@ -82,10 +84,10 @@ export function ProfessorListsProvider({ children }: Props) {
       const byContact = (s.contact || "").toLowerCase().includes(term);
       return byName || byDoc || byContact;
     });
-  }, [activeStudents, studentSearch]);
+  }, [activeStudents, deferredStudentSearch]);
 
   const filteredInactiveStudents = useMemo(() => {
-    const term = studentSearch.trim().toLowerCase();
+    const term = deferredStudentSearch.trim().toLowerCase();
     if (!term) return inactiveStudents;
     return inactiveStudents.filter((s) => {
       const byName = s.full_name.toLowerCase().includes(term);
@@ -93,7 +95,7 @@ export function ProfessorListsProvider({ children }: Props) {
       const byContact = (s.contact || "").toLowerCase().includes(term);
       return byName || byDoc || byContact;
     });
-  }, [inactiveStudents, studentSearch]);
+  }, [inactiveStudents, deferredStudentSearch]);
 
   useEffect(() => {
     setExerciseVisibleCount(PAGE_SIZE);

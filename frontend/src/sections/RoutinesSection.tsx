@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { Box, Button, Collapse, Heading, HStack, Image, Stack, Text } from "@chakra-ui/react";
 
 type Props = any;
@@ -21,6 +21,30 @@ function RoutinesSection({
   setDeleteRoutineTarget,
   setDeleteRoutineModalOpen,
 }: Props) {
+  const routineCards = useMemo(
+    () =>
+      sortedRoutines.map((routine: any) => {
+        const orderedDays = [...routine.days].sort((a: any, b: any) => a.day_number - b.day_number);
+        return {
+          routine,
+          daysPreview: `${orderedDays.length} Días`,
+          weekArrowsTotal: getRoutineWeekArrows(routine),
+          orderedDays: orderedDays.map((day: any) => ({
+            ...day,
+            label: day.name || formatDay(day),
+            arrowsTotal: getRoutineDayArrows(day),
+            items: day.exercises.length
+              ? day.exercises.map((dayExercise: any) => ({
+                  id: dayExercise.id,
+                  name: exerciseNameById.get(dayExercise.exercise_id) || `Ejercicio #${dayExercise.exercise_id}`,
+                }))
+              : [],
+          })),
+        };
+      }),
+    [sortedRoutines, getRoutineWeekArrows, formatDay, getRoutineDayArrows, exerciseNameById],
+  );
+
   return (
     <Stack spacing={6}>
       <HStack justify="space-between" align="center" spacing={4} w="full" maxW="980px">
@@ -36,10 +60,7 @@ function RoutinesSection({
         </Button>
       </HStack>
       <Stack spacing={4} w="full" maxW="980px">
-        {sortedRoutines.map((routine: any) => {
-          const orderedDays = [...routine.days].sort((a: any, b: any) => a.day_number - b.day_number);
-          const daysPreview = `${orderedDays.length} Días`;
-          const weekArrowsTotal = getRoutineWeekArrows(routine);
+        {routineCards.map(({ routine, orderedDays, daysPreview, weekArrowsTotal }: any) => {
           const isExpanded = expandedRoutine === routine.id;
           return (
             <Box key={routine.id} borderWidth="1px" borderRadius="12px" borderColor="gray.200" bg="white" overflow="hidden" _hover={{ borderColor: "gray.300", cursor: "pointer" }} onClick={() => setExpandedRoutine((prev: any) => (prev === routine.id ? null : routine.id))}>
@@ -55,18 +76,18 @@ function RoutinesSection({
                       {orderedDays.map((day: any) => (
                         <Box key={day.id} pl={3} borderLeft="2px solid" borderColor="gray.200">
                           <HStack spacing={2} align="baseline" w="full">
-                            <Text color="gray.700" fontWeight="medium">{day.name || formatDay(day)}</Text>
+                            <Text color="gray.700" fontWeight="medium">{day.label}</Text>
                             <Text color="gray.400" fontSize="sm">•</Text>
-                            <Text color="gray.500" fontSize="sm">Flechas totales: {getRoutineDayArrows(day)}</Text>
+                            <Text color="gray.500" fontSize="sm">Flechas totales: {day.arrowsTotal}</Text>
                           </HStack>
                           <Stack as="ul" spacing={0.75} mt={1}>
-                            {day.exercises.map((dayExercise: any) => (
-                              <HStack as="li" key={dayExercise.id} align="flex-start" spacing={2}>
+                            {day.items.map((item: any) => (
+                              <HStack as="li" key={item.id} align="flex-start" spacing={2}>
                                 <Box w="5px" h="5px" mt="7px" borderRadius="full" bg="orange.400" flexShrink={0} />
-                                <Text fontSize="sm" color="gray.500">{exerciseNameById.get(dayExercise.exercise_id) || `Ejercicio #${dayExercise.exercise_id}`}</Text>
+                                <Text fontSize="sm" color="gray.500">{item.name}</Text>
                               </HStack>
                             ))}
-                            {!day.exercises.length && (
+                            {!day.items.length && (
                               <HStack as="li" align="flex-start" spacing={2}>
                                 <Box w="5px" h="5px" mt="7px" borderRadius="full" bg="gray.300" flexShrink={0} />
                                 <Text fontSize="sm" color="gray.500">Sin ejercicios</Text>
