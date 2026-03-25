@@ -32,3 +32,6 @@ backend/tmp_fix.py
 .DS_Store
 .vscode/
 .idea/
+
+#Backup DB
+Backup DB/
