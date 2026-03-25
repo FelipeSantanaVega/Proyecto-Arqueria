@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useRef, useState } from "react";
+import { memo, useLayoutEffect, useRef } from "react";
 import {
   Alert,
   AlertIcon,
@@ -125,9 +125,7 @@ function AssignRoutineModal({
   setAssignRoutineStep,
 }: Props) {
   const previewMeasureRef = useRef<HTMLDivElement | null>(null);
-  const [measuredPreviewHeight, setMeasuredPreviewHeight] = useState<number | null>(null);
   const existingOrderHeight = `${Math.min(520, Math.max(180, 84 + selectedRoutinesToAssign.length * 74))}px`;
-  const existingPreviewHeight = `${Math.min(620, Math.max(360, measuredPreviewHeight ?? 360))}px`;
   const stepBodyHeight =
     assignRoutineStep === "choice"
       ? "300px"
@@ -139,7 +137,7 @@ function AssignRoutineModal({
             ? assignRoutineStep === "existing_list"
               ? "430px"
               : existingOrderHeight
-            : existingPreviewHeight;
+            : undefined;
 
   useLayoutEffect(() => {
     if (assignRoutineStep !== "existing_preview") return;
@@ -147,8 +145,7 @@ function AssignRoutineModal({
     if (!node) return;
 
     const updateHeight = () => {
-      const contentHeight = node.scrollHeight;
-      setMeasuredPreviewHeight(contentHeight + 16);
+      void node.scrollHeight;
     };
 
     updateHeight();
@@ -393,7 +390,7 @@ function AssignRoutineModal({
             </Stack>
           )}
           {assignRoutineStep === "existing_preview" && selectedRoutineToAssign && (
-            <Stack ref={assignRoutineSummaryListRef} spacing={4} flex="1" minH={0} maxH={{ base: "36vh", md: `${routineAssignSummaryListMaxH}px` }} overflowY="auto" pr={1} animation={`${routineStepSlide} 0.3s ease`} onWheel={handleAssignRoutineSummaryWheel} sx={{ overscrollBehaviorY: "contain" }}>
+            <Stack ref={assignRoutineSummaryListRef} spacing={4} minH={0} maxH={{ base: "36vh", md: `${routineAssignSummaryListMaxH}px` }} overflowY="auto" pr={1} animation={`${routineStepSlide} 0.3s ease`} onWheel={handleAssignRoutineSummaryWheel} sx={{ overscrollBehaviorY: "contain" }}>
               <Stack ref={previewMeasureRef} spacing={4}>
                 {routineAssignBuilderDays.map((day: any) => (
                   <Box key={`assign-summary-${day.key}`} borderWidth="1px" borderColor={isAssignPreviewOverDayLimit ? "red.300" : "gray.200"} borderRadius="10px" p={4}>
