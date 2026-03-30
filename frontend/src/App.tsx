@@ -1136,6 +1136,10 @@ function App() {
   const currentRoutineDayLabel = currentRoutineDay?.label || "";
   const exerciseNameById = useMemo(() => new Map(exercises.map((ex) => [ex.id, ex.name])), [exercises]);
   const exerciseArrowsById = useMemo(() => new Map(exercises.map((ex) => [ex.id, ex.arrows_count])), [exercises]);
+  const currentRoutineDayTotalArrows = useMemo(
+    () => currentRoutineDayExercises.reduce((sum, exerciseId) => sum + Number(exerciseArrowsById.get(exerciseId) ?? 0), 0),
+    [currentRoutineDayExercises, exerciseArrowsById],
+  );
   const getSummaryDayArrows = useCallback(
     (
       exerciseIds: number[],
@@ -3174,6 +3178,7 @@ function App() {
           setRoutineDayInitialLimit={setRoutineDayInitialLimit}
           currentRoutineDayKey={currentRoutineDayKey}
           currentRoutineDayLabel={currentRoutineDayLabel}
+          currentRoutineDayTotalArrows={currentRoutineDayTotalArrows}
           routineDayCursor={routineDayCursor}
           routineExerciseSearch={routineExerciseSearch}
           filteredRoutineExercises={filteredRoutineExercises}

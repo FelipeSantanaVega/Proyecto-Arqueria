@@ -83,6 +83,7 @@ function CreateRoutineModal({
   setRoutineDayInitialLimit,
   currentRoutineDayKey,
   currentRoutineDayLabel,
+  currentRoutineDayTotalArrows,
   routineDayCursor,
   routineExerciseSearch,
   filteredRoutineExercises,
@@ -296,7 +297,12 @@ function CreateRoutineModal({
             {routineModalStep === 2 && (
               <Stack ref={routineStepRef} key={`${currentRoutineDayKey || "dia"}-${routineDayCursor}`} spacing={6} animation={`${routineDaySlide} 0.3s ease`}>
                 <Box p={4}>
-                  <Heading size="md" mb={4}>{currentRoutineDayLabel || "Día"}</Heading>
+                  <HStack justify="space-between" align="start" mb={4}>
+                    <Heading size="md">{currentRoutineDayLabel || "Día"}</Heading>
+                    <Text fontSize="sm" color="gray.500" fontWeight="500">
+                      {currentRoutineDayTotalArrows} flechas
+                    </Text>
+                  </HStack>
                   <InputGroup maxW={{ base: "360px", xl: "480px", "2xl": "560px" }}>
                     <InputLeftElement pointerEvents="none" color="gray.500"><SearchIcon boxSize={3.5} /></InputLeftElement>
                     <Input value={routineExerciseSearch} onChange={(e) => setRoutineExerciseSearch(e.target.value)} placeholder="Buscar ejercicios" bg="white" borderColor="gray.300" borderRadius="8px" _hover={{ borderColor: "gray.400" }} _focus={{ borderColor: "#f97316", bg: "white" }} />
