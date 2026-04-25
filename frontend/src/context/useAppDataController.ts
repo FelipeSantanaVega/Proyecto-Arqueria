@@ -64,6 +64,16 @@ export type Assignment = {
   notes?: string | null;
 };
 
+export type UserAccount = {
+  id: number;
+  username: string;
+  role: "admin" | "professor" | "student";
+  is_active: boolean;
+  preferred_lang: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export function useAppDataController(
   token: string | null,
   options?: {
@@ -76,16 +86,19 @@ export function useAppDataController(
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [users, setUsers] = useState<UserAccount[]>([]);
   const [healthLoading, setHealthLoading] = useState(false);
   const [exercisesLoading, setExercisesLoading] = useState(false);
   const [routinesLoading, setRoutinesLoading] = useState(false);
   const [studentsLoading, setStudentsLoading] = useState(false);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [usersLoading, setUsersLoading] = useState(false);
   const [healthLoaded, setHealthLoaded] = useState(false);
   const [exercisesLoaded, setExercisesLoaded] = useState(false);
   const [routinesLoaded, setRoutinesLoaded] = useState(false);
   const [studentsLoaded, setStudentsLoaded] = useState(false);
   const [assignmentsLoaded, setAssignmentsLoaded] = useState(false);
+  const [usersLoaded, setUsersLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const ensureHealthLoaded = useCallback(async () => {
@@ -104,10 +117,10 @@ export function useAppDataController(
   }, [healthLoaded, healthLoading]);
 
   const ensureExercisesLoaded = useCallback(async () => {
-    if (exercisesLoaded || exercisesLoading) return;
+    if (!token || exercisesLoaded || exercisesLoading) return;
     setExercisesLoading(true);
     try {
-      const data = await apiFetch<Exercise[]>("/exercises");
+      const data = await apiFetch<Exercise[]>("/exercises", { token });
       setExercises(data);
       setExercisesLoaded(true);
     } catch (err) {
@@ -116,13 +129,13 @@ export function useAppDataController(
     } finally {
       setExercisesLoading(false);
     }
-  }, [exercisesLoaded, exercisesLoading]);
+  }, [token, exercisesLoaded, exercisesLoading]);
 
   const ensureRoutinesLoaded = useCallback(async () => {
-    if (routinesLoaded || routinesLoading) return;
+    if (!token || routinesLoaded || routinesLoading) return;
     setRoutinesLoading(true);
     try {
-      const data = await apiFetch<Routine[]>("/routines");
+      const data = await apiFetch<Routine[]>("/routines", { token });
       setRoutines(data);
       setRoutinesLoaded(true);
     } catch (err) {
@@ -131,7 +144,7 @@ export function useAppDataController(
     } finally {
       setRoutinesLoading(false);
     }
-  }, [routinesLoaded, routinesLoading]);
+  }, [token, routinesLoaded, routinesLoading]);
 
   const ensureStudentsLoaded = useCallback(async () => {
     if (!token || studentsLoaded || studentsLoading) return;
@@ -139,10 +152,10 @@ export function useAppDataController(
     try {
       const data = await apiFetch<Student[]>("/students", { token });
       setStudents(data);
-      setStudentsLoaded(true);
     } catch {
       // silencioso para no bloquear otras vistas
     } finally {
+      setStudentsLoaded(true);
       setStudentsLoading(false);
     }
   }, [token, studentsLoaded, studentsLoading]);
@@ -153,20 +166,40 @@ export function useAppDataController(
     try {
       const data = await apiFetch<Assignment[]>("/assignments", { token });
       setAssignments(data);
-      setAssignmentsLoaded(true);
     } catch {
       // silencioso para no bloquear otras vistas
     } finally {
+      setAssignmentsLoaded(true);
       setAssignmentsLoading(false);
     }
   }, [token, assignmentsLoaded, assignmentsLoading]);
 
+  const ensureUsersLoaded = useCallback(async () => {
+    if (!token || usersLoaded || usersLoading) return;
+    setUsersLoading(true);
+    try {
+      const data = await apiFetch<UserAccount[]>("/users", { token });
+      setUsers(data);
+    } catch {
+      // silencioso para no bloquear otras vistas
+    } finally {
+      setUsersLoaded(true);
+      setUsersLoading(false);
+    }
+  }, [token, usersLoaded, usersLoading]);
+
   useEffect(() => {
     if (!token) {
+      setExercises([]);
+      setRoutines([]);
       setAssignments([]);
       setStudents([]);
+      setUsers([]);
+      setExercisesLoaded(false);
+      setRoutinesLoaded(false);
       setAssignmentsLoaded(false);
       setStudentsLoaded(false);
+      setUsersLoaded(false);
     }
   }, [token]);
 
@@ -181,6 +214,7 @@ export function useAppDataController(
       if (token) {
         void ensureStudentsLoaded();
         void ensureAssignmentsLoaded();
+        void ensureUsersLoaded();
       }
       return;
     }
@@ -209,13 +243,14 @@ export function useAppDataController(
     ensureRoutinesLoaded,
     ensureStudentsLoaded,
     ensureAssignmentsLoaded,
+    ensureUsersLoaded,
   ]);
 
   const loading = useMemo(() => {
     const view = options?.view;
     const activeSection = options?.activeSection;
     if (view === "dashboard") {
-      return healthLoading || exercisesLoading || routinesLoading || studentsLoading || assignmentsLoading;
+      return healthLoading || exercisesLoading || routinesLoading || studentsLoading || assignmentsLoading || usersLoading;
     }
     if (view !== "professor") return false;
     if (activeSection === "ejercicio") return exercisesLoading;
@@ -231,6 +266,7 @@ export function useAppDataController(
     routinesLoading,
     studentsLoading,
     assignmentsLoading,
+    usersLoading,
   ]);
   const setLoading = () => {};
 
@@ -245,6 +281,8 @@ export function useAppDataController(
     setStudents,
     assignments,
     setAssignments,
+    users,
+    setUsers,
     loading,
     setLoading,
     error,
@@ -254,12 +292,14 @@ export function useAppDataController(
     ensureRoutinesLoaded,
     ensureStudentsLoaded,
     ensureAssignmentsLoaded,
+    ensureUsersLoaded,
   }), [
     health,
     exercises,
     routines,
     students,
     assignments,
+    users,
     loading,
     error,
     ensureHealthLoaded,
@@ -267,5 +307,6 @@ export function useAppDataController(
     ensureRoutinesLoaded,
     ensureStudentsLoaded,
     ensureAssignmentsLoaded,
+    ensureUsersLoaded,
   ]);
 }

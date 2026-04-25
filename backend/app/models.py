@@ -40,6 +40,8 @@ class User(Base):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     preferred_lang: Mapped[str] = mapped_column(String(2), default="es", nullable=False)
+    refresh_token_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    refresh_token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )
@@ -58,6 +60,7 @@ class Exercise(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    created_by_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     arrows_count: Mapped[int] = mapped_column(Integer, nullable=False)
     rounds: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
@@ -81,13 +84,15 @@ class Student(Base):
     __tablename__ = "students"
     __table_args__ = (
         Index("idx_students_active_name", "is_active", "full_name"),
+        UniqueConstraint("created_by_user_id", "document_number", name="uq_students_owner_document"),
         CheckConstraint("char_length(trim(document_number)) > 0", name="chk_students_document_not_empty"),
         CheckConstraint("bow_pounds IS NULL OR bow_pounds > 0", name="chk_students_bow_positive"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    created_by_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=True)
     full_name: Mapped[str] = mapped_column(String(150), nullable=False)
-    document_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    document_number: Mapped[str] = mapped_column(String(50), nullable=False)
     contact: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     bow_pounds: Mapped[Optional[float]] = mapped_column(Numeric(6, 2), nullable=True)
     arrows_available: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -108,11 +113,12 @@ class Student(Base):
 class Routine(Base):
     __tablename__ = "routines"
     __table_args__ = (
-        UniqueConstraint("name", name="uq_routines_name"),
+        UniqueConstraint("created_by_user_id", "name", name="uq_routines_owner_name"),
         Index("idx_routines_template_active", "is_template", "is_active"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    created_by_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -211,6 +217,7 @@ class StudentRoutineAssignment(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    created_by_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=True)
     student_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("students.id", ondelete="CASCADE", onupdate="CASCADE"),
@@ -248,6 +255,7 @@ class StudentRoutineHistory(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    created_by_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=True)
     assignment_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     student_full_name: Mapped[str] = mapped_column(String(150), nullable=False)

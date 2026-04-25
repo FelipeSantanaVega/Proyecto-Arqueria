@@ -25,7 +25,8 @@ class Settings(BaseSettings):
 
     jwt_secret: str = "change_me"
     jwt_algorithm: str = "HS256"
-    jwt_expires_min: int = 43200
+    jwt_expires_min: int = 30
+    jwt_refresh_expires_min: int = 43200
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,

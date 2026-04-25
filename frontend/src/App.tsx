@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import {
   Alert,
   AlertIcon,
@@ -6,9 +6,7 @@ import {
   Box,
   Button,
   Checkbox,
-  Container,
   Collapse,
-  Divider,
   Flex,
   FormControl,
   FormLabel,
@@ -19,6 +17,7 @@ import {
   Input,
   InputGroup,
   InputLeftElement,
+  InputRightElement,
   Image,
   Modal,
   ModalBody,
@@ -27,12 +26,12 @@ import {
   ModalHeader,
   ModalOverlay,
   Textarea,
+  Select,
   SimpleGrid,
   Spinner,
   Stack,
   Tag,
   Text,
-  VStack,
 } from "@chakra-ui/react";
 import { CheckCircleIcon, SearchIcon, WarningIcon } from "@chakra-ui/icons";
 import { keyframes } from "@emotion/react";
@@ -43,12 +42,74 @@ import arquerosAndinosHeaderUrl from "./assets/arqueros-andinos-header.svg";
 import userPlusIconUrl from "./assets/user-plus.svg";
 import editIconUrl from "./assets/edit.svg";
 import notebookTabsIconUrl from "./assets/notebook-tabs.svg";
-import { apiFetch, API_BASE } from "./api";
+import {
+  apiFetch,
+  API_BASE,
+  clearStoredAuth,
+  getAuthEventName,
+  getStoredRefreshToken,
+  getStoredToken,
+  storeAuthTokens,
+} from "./api";
 import { AppDataProvider } from "./context/AppDataContext";
 import { ProfessorListsProvider } from "./context/ProfessorListsContext";
 import { useAppDataController } from "./context/useAppDataController";
 import AssignRoutineModal from "./sections/AssignRoutineModal";
 import CreateRoutineModal from "./sections/CreateRoutineModal";
+
+type PasswordInputProps = ComponentProps<typeof Input>;
+
+function EyeOpenIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function EyeClosedIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m15 18-.722-3.25" />
+      <path d="M2 8a10.645 10.645 0 0 0 20 0" />
+      <path d="m20 15-1.726-2.05" />
+      <path d="m4 15 1.726-2.05" />
+      <path d="m9 18 .722-3.25" />
+    </svg>
+  );
+}
+
+function PasswordInput(props: PasswordInputProps) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <InputGroup>
+      <Input
+        {...props}
+        type={visible ? "text" : "password"}
+        pr="3rem"
+      />
+      <InputRightElement h="full" width="3rem">
+        <Button
+          type="button"
+          variant="ghost"
+          minW="auto"
+          h="full"
+          px={0}
+          color="gray.500"
+          _hover={{ bg: "transparent", color: "gray.600" }}
+          _active={{ bg: "transparent", color: "gray.700" }}
+          _focusVisible={{ boxShadow: "none", color: "gray.700" }}
+          onClick={() => setVisible((current) => !current)}
+          aria-label={visible ? "Ocultar contraseña" : "Mostrar contraseña"}
+        >
+          {visible ? <EyeOpenIcon /> : <EyeClosedIcon />}
+        </Button>
+      </InputRightElement>
+    </InputGroup>
+  );
+}
 
 const routineDaySlide = keyframes`
   from {
@@ -299,6 +360,7 @@ const RoutinesSection = lazy(() => import("./sections/RoutinesSection"));
 const ExercisesSection = lazy(() => import("./sections/ExercisesSection"));
 const StudentsSection = lazy(() => import("./sections/StudentsSection"));
 const ProfileSection = lazy(() => import("./sections/ProfileSection"));
+const AdminDashboardSection = lazy(() => import("./sections/AdminDashboardSection"));
 
 const ACTION_ICON_BUTTON_SIZE = { base: "xs", xl: "sm", "2xl": "md" } as const;
 const ACTION_ICON_SIZE = "15px";
@@ -359,6 +421,16 @@ type Assignment = {
   end_date?: string | null;
   status: "active" | "paused" | "finished";
   notes?: string | null;
+};
+
+type UserAccount = {
+  id: number;
+  username: string;
+  role: "admin" | "professor" | "student";
+  is_active: boolean;
+  preferred_lang: string;
+  created_at: string;
+  updated_at: string;
 };
 
 type AssignmentHistory = {
@@ -453,6 +525,26 @@ function formatDateEs(value?: string | null): string {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+function formatDateTimeEs(value?: string | null): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function getRoleLabel(role: string | null | undefined): string {
+  if (role === "admin") return "Administrador";
+  if (role === "professor") return "Profesor";
+  if (role === "student") return "Deportista";
+  return "Sin rol";
+}
+
 function getRoutineEntryKey(exerciseId: number, itemIndex: number): string {
   return `${itemIndex}:${exerciseId}`;
 }
@@ -545,8 +637,18 @@ function parseRoleFromToken(rawToken: string | null): string | null {
   }
 }
 
-function getStoredToken(): string | null {
-  return localStorage.getItem("token") ?? sessionStorage.getItem("token");
+function parseUsernameFromToken(rawToken: string | null): string | null {
+  if (!rawToken) return null;
+  try {
+    const [, payload] = rawToken.split(".");
+    if (!payload) return null;
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+    const parsed = JSON.parse(atob(padded)) as { sub?: string };
+    return parsed.sub || null;
+  } catch {
+    return null;
+  }
 }
 
 function App() {
@@ -728,6 +830,44 @@ function App() {
   const [rememberMe, setRememberMe] = useState<boolean>(() => localStorage.getItem("remember_me") !== "0");
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
+  const [changePasswordModalOpen, setChangePasswordModalOpen] = useState(false);
+  const [changePasswordCurrent, setChangePasswordCurrent] = useState("");
+  const [changePasswordNext, setChangePasswordNext] = useState("");
+  const [changePasswordConfirm, setChangePasswordConfirm] = useState("");
+  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
+  const [changePasswordSuccess, setChangePasswordSuccess] = useState<string | null>(null);
+  const [adminUserModalOpen, setAdminUserModalOpen] = useState(false);
+  const [adminUserUsername, setAdminUserUsername] = useState("");
+  const [adminUserPassword, setAdminUserPassword] = useState("");
+  const [adminUserRole, setAdminUserRole] = useState<"admin" | "professor" | "student">("professor");
+  const [adminUserCreateLoading, setAdminUserCreateLoading] = useState(false);
+  const [adminUserCreateError, setAdminUserCreateError] = useState<string | null>(null);
+  const [adminUserMutationId, setAdminUserMutationId] = useState<number | null>(null);
+  const [adminUserMutationError, setAdminUserMutationError] = useState<string | null>(null);
+  const canManageUsers = userRole === "admin";
+  const currentUsername = parseUsernameFromToken(token) ?? username;
+  const changePasswordValidationError = useMemo(() => {
+    if (!changePasswordCurrent || !changePasswordNext || !changePasswordConfirm) {
+      return "Todos los campos son obligatorios";
+    }
+    if (changePasswordNext.length < 8) {
+      return "La nueva contraseña debe tener al menos 8 caracteres";
+    }
+    if (changePasswordCurrent === changePasswordNext) {
+      return "La nueva contraseña no puede ser igual a la actual";
+    }
+    if (changePasswordNext !== changePasswordConfirm) {
+      return "Las contraseñas no coinciden";
+    }
+    return null;
+  }, [changePasswordConfirm, changePasswordCurrent, changePasswordNext]);
+  const changePasswordCanSubmit =
+    Boolean(changePasswordCurrent) &&
+    Boolean(changePasswordNext) &&
+    Boolean(changePasswordConfirm) &&
+    !changePasswordValidationError &&
+    !changePasswordLoading;
   const appData = useAppDataController(token, { view, activeSection: view === "professor" ? profSection : null });
   const {
     health,
@@ -739,6 +879,8 @@ function App() {
     setStudents,
     assignments,
     setAssignments,
+    users,
+    setUsers,
     loading,
     error,
     ensureExercisesLoaded,
@@ -749,6 +891,35 @@ function App() {
 
   useEffect(() => {
     setUserRole(parseRoleFromToken(token));
+  }, [token]);
+
+  useEffect(() => {
+    const handleAuthChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ accessToken: string | null }>).detail;
+      setToken(detail?.accessToken ?? null);
+    };
+    window.addEventListener(getAuthEventName(), handleAuthChange as EventListener);
+    return () => window.removeEventListener(getAuthEventName(), handleAuthChange as EventListener);
+  }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    void apiFetch<{ username: string; role: string }>("/auth/me", { token })
+      .then((me) => {
+        if (cancelled) return;
+        setUsername(me.username);
+        setUserRole(me.role);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        clearStoredAuth();
+        setToken(null);
+        setUserRole(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
 
   useEffect(() => {
@@ -1057,6 +1228,21 @@ function App() {
         .sort((a, b) => (a.start_date || "").localeCompare(b.start_date || "")),
     [assignments],
   );
+  const usersSortedByCreated = useMemo(
+    () => [...users].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+    [users],
+  );
+  const usersSortedByUpdated = useMemo(
+    () => [...users].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
+    [users],
+  );
+  const activeUserCount = useMemo(() => users.filter((user) => user.is_active).length, [users]);
+  const inactiveUsers = useMemo(() => users.filter((user) => !user.is_active), [users]);
+  const professorUserCount = useMemo(() => users.filter((user) => user.role === "professor").length, [users]);
+  const adminUserCount = useMemo(() => users.filter((user) => user.role === "admin").length, [users]);
+  const recentUserChanges = useMemo(() => usersSortedByUpdated.slice(0, 5), [usersSortedByUpdated]);
+  const recentUsers = useMemo(() => usersSortedByCreated.slice(0, 5), [usersSortedByCreated]);
+  const lastUserUpdate = usersSortedByUpdated[0] ?? null;
   const filteredStudentHistoryItems = useMemo(() => {
     const term = studentHistorySearch.trim().toLowerCase();
     if (!term) return studentHistoryItems;
@@ -1383,17 +1569,9 @@ function App() {
         const detail = await res.json().catch(() => ({}));
         throw new Error(detail?.detail || "Credenciales inválidas");
       }
-      const data = (await res.json()) as { access_token: string };
+      const data = (await res.json()) as { access_token: string; refresh_token: string };
+      storeAuthTokens(data.access_token, data.refresh_token, rememberMe);
       setToken(data.access_token);
-      if (rememberMe) {
-        localStorage.setItem("token", data.access_token);
-        localStorage.setItem("remember_me", "1");
-        sessionStorage.removeItem("token");
-      } else {
-        sessionStorage.setItem("token", data.access_token);
-        localStorage.removeItem("token");
-        localStorage.setItem("remember_me", "0");
-      }
       goToView("professor", true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al iniciar sesión";
@@ -1403,16 +1581,160 @@ function App() {
     }
   };
 
-  const handleLogout = useCallback(() => {
+  const clearClientSession = useCallback(() => {
+    clearStoredAuth();
     setToken(null);
     setUserRole(null);
-    localStorage.removeItem("token");
-    sessionStorage.removeItem("token");
     setUsername("");
     setPassword("");
     setStudents([]);
     goToView("login", true);
   }, [goToView, setStudents]);
+
+  const handleLogout = useCallback(async () => {
+    const refreshToken = getStoredRefreshToken();
+    try {
+      await apiFetch("/auth/logout", {
+        method: "POST",
+        token,
+        body: JSON.stringify({ refresh_token: refreshToken }),
+        skipAuthRefresh: true,
+      });
+    } catch {
+      if (refreshToken) {
+        try {
+          await apiFetch("/auth/logout", {
+            method: "POST",
+            body: JSON.stringify({ refresh_token: refreshToken }),
+            skipAuthRefresh: true,
+          });
+        } catch {
+          // ignore logout API errors and clear local session anyway
+        }
+      }
+    }
+    clearClientSession();
+  }, [clearClientSession, token]);
+
+  const openChangePasswordModal = useCallback(() => {
+    setChangePasswordError(null);
+    setChangePasswordSuccess(null);
+    setChangePasswordCurrent("");
+    setChangePasswordNext("");
+    setChangePasswordConfirm("");
+    setChangePasswordModalOpen(true);
+  }, []);
+
+  const closeChangePasswordModal = useCallback(() => {
+    setChangePasswordModalOpen(false);
+    setChangePasswordError(null);
+    setChangePasswordCurrent("");
+    setChangePasswordNext("");
+    setChangePasswordConfirm("");
+  }, []);
+
+  const handleChangePassword = useCallback(async () => {
+    if (!token) return;
+    setChangePasswordError(null);
+    setChangePasswordSuccess(null);
+
+    if (changePasswordValidationError) {
+      setChangePasswordError(changePasswordValidationError);
+      return;
+    }
+
+    setChangePasswordLoading(true);
+    try {
+      const response = await apiFetch<{ detail: string }>("/auth/change-password", {
+        method: "POST",
+        token,
+        body: JSON.stringify({
+          current_password: changePasswordCurrent,
+          new_password: changePasswordNext,
+          confirm_password: changePasswordConfirm,
+        }),
+      });
+      setChangePasswordSuccess(response.detail || "Contraseña actualizada correctamente");
+      closeChangePasswordModal();
+      clearClientSession();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "No se pudo actualizar la contraseña";
+      setChangePasswordError(msg);
+    } finally {
+      setChangePasswordLoading(false);
+    }
+  }, [changePasswordConfirm, changePasswordCurrent, changePasswordNext, changePasswordValidationError, clearClientSession, closeChangePasswordModal, token]);
+
+  const openAdminUserModal = useCallback(() => {
+    setAdminUserCreateError(null);
+    setAdminUserUsername("");
+    setAdminUserPassword("");
+    setAdminUserRole(userRole === "professor" ? "student" : "professor");
+    setAdminUserModalOpen(true);
+  }, [userRole]);
+
+  const closeAdminUserModal = useCallback(() => {
+    setAdminUserModalOpen(false);
+    setAdminUserCreateError(null);
+    setAdminUserUsername("");
+    setAdminUserPassword("");
+    setAdminUserRole(userRole === "professor" ? "student" : "professor");
+  }, [userRole]);
+
+  const handleCreateAdminUser = useCallback(async () => {
+    if (!token) return;
+    setAdminUserCreateError(null);
+    if (adminUserUsername.trim().length < 3) {
+      setAdminUserCreateError("El usuario debe tener al menos 3 caracteres");
+      return;
+    }
+    if (adminUserPassword.length < 8) {
+      setAdminUserCreateError("La contraseña debe tener al menos 8 caracteres");
+      return;
+    }
+
+    setAdminUserCreateLoading(true);
+    try {
+      const created = await apiFetch<UserAccount>("/users", {
+        method: "POST",
+        token,
+        body: JSON.stringify({
+          username: adminUserUsername.trim(),
+          password: adminUserPassword,
+          role: adminUserRole,
+          is_active: true,
+        }),
+      });
+      setUsers((prev) =>
+        [created, ...prev].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+      );
+      closeAdminUserModal();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "No se pudo crear el usuario";
+      setAdminUserCreateError(msg);
+    } finally {
+      setAdminUserCreateLoading(false);
+    }
+  }, [adminUserPassword, adminUserRole, adminUserUsername, closeAdminUserModal, setUsers, token]);
+
+  const handleAdminUserUpdate = useCallback(async (userId: number, payload: Pick<UserAccount, "role" | "is_active">) => {
+    if (!token) return;
+    setAdminUserMutationError(null);
+    setAdminUserMutationId(userId);
+    try {
+      const updated = await apiFetch<UserAccount>(`/users/${userId}`, {
+        method: "PUT",
+        token,
+        body: JSON.stringify(payload),
+      });
+      setUsers((prev) => prev.map((user) => (user.id === updated.id ? updated : user)));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "No se pudo actualizar el usuario";
+      setAdminUserMutationError(msg);
+    } finally {
+      setAdminUserMutationId(null);
+    }
+  }, [setUsers, token]);
 
   const openCreateRoutineModal = useCallback(() => {
     void ensureExercisesLoaded();
@@ -2548,8 +2870,7 @@ function App() {
                         <FormLabel color="gray.700" mb={1.5} fontSize="sm">
                           Contraseña
                         </FormLabel>
-                        <Input
-                          type="password"
+                        <PasswordInput
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           bg="#f9fafb"
@@ -2896,13 +3217,180 @@ function App() {
                     setActivateModalOpen={setActivateModalOpen}
                   />
                 )}
-                {profSection === "perfil" && <ProfileSection />}
+                {profSection === "perfil" && (
+                  <ProfileSection
+                    username={currentUsername}
+                    userRole={userRole}
+                    changePasswordSuccess={changePasswordSuccess}
+                    openChangePasswordModal={openChangePasswordModal}
+                    openCreateUserModal={userRole === "professor" ? openAdminUserModal : null}
+                  />
+                )}
               </Suspense>
               </ProfessorListsProvider>
               </AppDataProvider>
             </Stack>
           </GridItem>
         </Grid>
+        <Modal isOpen={adminUserModalOpen} onClose={closeAdminUserModal} isCentered>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "480px" }} borderRadius="12px" overflow="hidden">
+            <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
+              <HStack justify="space-between">
+                <Text fontWeight="700" color="gray.900">Crear usuario</Text>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={closeAdminUserModal}>
+                  ×
+                </Button>
+              </HStack>
+            </ModalHeader>
+            <ModalBody py={5}>
+              <Stack spacing={4}>
+                {adminUserCreateError && (
+                  <Alert status="error" borderRadius="md">
+                    <AlertIcon />
+                    {adminUserCreateError}
+                  </Alert>
+                )}
+                <FormControl isRequired>
+                  <FormLabel color="gray.700">Usuario</FormLabel>
+                  <Input
+                    value={adminUserUsername}
+                    onChange={(e) => {
+                      setAdminUserUsername(e.target.value);
+                      if (adminUserCreateError) setAdminUserCreateError(null);
+                    }}
+                    placeholder="Nombre de usuario"
+                  />
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel color="gray.700">Contraseña inicial</FormLabel>
+                  <PasswordInput
+                    value={adminUserPassword}
+                    onChange={(e) => {
+                      setAdminUserPassword(e.target.value);
+                      if (adminUserCreateError) setAdminUserCreateError(null);
+                    }}
+                    placeholder="Mínimo 8 caracteres"
+                  />
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel color="gray.700">Rol</FormLabel>
+                  <Select
+                    value={adminUserRole}
+                    onChange={(e) => setAdminUserRole(e.target.value as "admin" | "professor" | "student")}
+                    isDisabled={!canManageUsers}
+                  >
+                    {canManageUsers ? (
+                      <>
+                        <option value="professor">Profesor</option>
+                        <option value="admin">Administrador</option>
+                        <option value="student">Deportista</option>
+                      </>
+                    ) : (
+                      <option value="student">Deportista</option>
+                    )}
+                  </Select>
+                </FormControl>
+              </Stack>
+            </ModalBody>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.200">
+              <HStack spacing={3}>
+                <Button variant="outline" borderColor="gray.300" onClick={closeAdminUserModal} isDisabled={adminUserCreateLoading}>
+                  Cancelar
+                </Button>
+                <Button
+                  bg="#f97316"
+                  color="white"
+                  _hover={{ bg: "#ea580c" }}
+                  _active={{ bg: "#c2410c" }}
+                  onClick={() => { void handleCreateAdminUser(); }}
+                  isLoading={adminUserCreateLoading}
+                >
+                  Crear usuario
+                </Button>
+              </HStack>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+        <Modal isOpen={changePasswordModalOpen} onClose={closeChangePasswordModal} isCentered>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "520px" }} borderRadius="12px" overflow="hidden">
+            <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
+              <HStack justify="space-between">
+                <Text fontWeight="700" color="gray.900">Cambiar contraseña</Text>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={closeChangePasswordModal}>
+                  ×
+                </Button>
+              </HStack>
+            </ModalHeader>
+            <ModalBody py={5}>
+              <Stack spacing={4}>
+                {changePasswordError && (
+                  <Alert status="error" borderRadius="md">
+                    <AlertIcon />
+                    {changePasswordError}
+                  </Alert>
+                )}
+                <FormControl isRequired>
+                  <FormLabel>Contraseña actual</FormLabel>
+                  <PasswordInput
+                    value={changePasswordCurrent}
+                    onChange={(e) => {
+                      setChangePasswordCurrent(e.target.value);
+                      if (changePasswordError) setChangePasswordError(null);
+                    }}
+                    autoComplete="current-password"
+                  />
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel>Nueva contraseña</FormLabel>
+                  <PasswordInput
+                    value={changePasswordNext}
+                    onChange={(e) => {
+                      setChangePasswordNext(e.target.value);
+                      if (changePasswordError) setChangePasswordError(null);
+                    }}
+                    autoComplete="new-password"
+                  />
+                  <Text mt={2} fontSize="sm" color="gray.500">Debe tener al menos 8 caracteres.</Text>
+                  {changePasswordNext.length > 0 && changePasswordNext.length < 8 && (
+                    <Text mt={1} fontSize="sm" color="red.500">La nueva contraseña debe tener al menos 8 caracteres.</Text>
+                  )}
+                  {changePasswordCurrent.length > 0 && changePasswordNext.length > 0 && changePasswordCurrent === changePasswordNext && (
+                    <Text mt={1} fontSize="sm" color="red.500">La nueva contraseña no puede ser igual a la actual.</Text>
+                  )}
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel>Confirmar nueva contraseña</FormLabel>
+                  <PasswordInput
+                    value={changePasswordConfirm}
+                    onChange={(e) => {
+                      setChangePasswordConfirm(e.target.value);
+                      if (changePasswordError) setChangePasswordError(null);
+                    }}
+                    autoComplete="new-password"
+                  />
+                  {changePasswordConfirm.length > 0 && changePasswordNext !== changePasswordConfirm && (
+                    <Text mt={1} fontSize="sm" color="red.500">Las contraseñas no coinciden.</Text>
+                  )}
+                  {changePasswordConfirm.length > 0 && changePasswordNext === changePasswordConfirm && changePasswordNext.length >= 8 && changePasswordCurrent !== changePasswordNext && (
+                    <Text mt={1} fontSize="sm" color="green.600">Las contraseñas coinciden.</Text>
+                  )}
+                </FormControl>
+              </Stack>
+            </ModalBody>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
+              <HStack spacing={3}>
+                <Button variant="outline" borderColor="gray.300" onClick={closeChangePasswordModal} isDisabled={changePasswordLoading}>
+                  Cancelar
+                </Button>
+                <Button bg="#f97316" color="white" _hover={{ bg: "#ea580c" }} _active={{ bg: "#c2410c" }} onClick={() => { void handleChangePassword(); }} isLoading={changePasswordLoading} isDisabled={!changePasswordCanSubmit}>
+                  Guardar contraseña
+                </Button>
+              </HStack>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
         <Modal isOpen={editModalOpen} onClose={() => setEditModalOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
@@ -6229,217 +6717,123 @@ function App() {
 
   return (
     <>
-      <Box bgGradient="linear(to-b, gray.50, white)">
-        <Container maxW="6xl" py={10}>
-          <Stack spacing={8}>
-            <HStack spacing={3}>
-              <Button alignSelf="flex-start" variant="outline" onClick={() => goToView("professor")}>
-                Volver al panel
+      <Suspense fallback={<Spinner />}>
+        <AdminDashboardSection
+          token={token}
+          goToProfessor={() => goToView("professor")}
+          handleLogout={handleLogout}
+          API_BASE={API_BASE}
+          loading={loading}
+          error={error}
+          health={health}
+          healthIcon={healthIcon}
+          activeUserCount={activeUserCount}
+          users={users}
+          activeAssignments={activeAssignments}
+          activeStudents={activeStudents}
+          stats={stats}
+          openAdminUserModal={openAdminUserModal}
+          adminUserMutationError={adminUserMutationError}
+          usersSortedByCreated={usersSortedByCreated}
+          handleAdminUserUpdate={handleAdminUserUpdate}
+          adminUserMutationId={adminUserMutationId}
+          professorUserCount={professorUserCount}
+          adminUserCount={adminUserCount}
+          students={students}
+          routineNameById={routineNameById}
+          studentNameById={studentNameById}
+          formatDateEs={formatDateEs}
+          currentUsername={currentUsername}
+          userRole={userRole}
+          inactiveUsers={inactiveUsers}
+          lastUserUpdate={lastUserUpdate}
+          formatDateTimeEs={formatDateTimeEs}
+          recentUserChanges={recentUserChanges}
+          recentUsers={recentUsers}
+          getRoleLabel={getRoleLabel}
+        />
+      </Suspense>
+      <Modal isOpen={adminUserModalOpen} onClose={closeAdminUserModal} isCentered>
+        <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+        <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "480px" }} borderRadius="12px" overflow="hidden">
+          <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
+            <HStack justify="space-between">
+              <Text fontWeight="700" color="gray.900">Crear usuario</Text>
+              <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={closeAdminUserModal}>
+                ×
               </Button>
-              {token && (
-                <Button variant="outline" onClick={handleLogout}>
-                  Logout
-                </Button>
-              )}
             </HStack>
-            <Stack spacing={3}>
-              <Heading size="lg">Entrenamientos de Arquería</Heading>
-              <Text color="gray.600">
-                Maqueta inicial: ejercicios, rutinas semanales y deportistas. Conectado a la API FastAPI en {" "}
-                <Tag colorScheme="blue" variant="subtle">
-                  {API_BASE}
-                </Tag>
-                .
-              </Text>
+          </ModalHeader>
+          <ModalBody py={5}>
+            <Stack spacing={4}>
+              {adminUserCreateError && (
+                <Alert status="error" borderRadius="md">
+                  <AlertIcon />
+                  {adminUserCreateError}
+                </Alert>
+              )}
+              <FormControl isRequired>
+                <FormLabel color="gray.700">Usuario</FormLabel>
+                <Input
+                  value={adminUserUsername}
+                  onChange={(e) => {
+                    setAdminUserUsername(e.target.value);
+                    if (adminUserCreateError) setAdminUserCreateError(null);
+                  }}
+                  placeholder="Nombre de usuario"
+                />
+              </FormControl>
+              <FormControl isRequired>
+                <FormLabel color="gray.700">Contraseña inicial</FormLabel>
+                <PasswordInput
+                  value={adminUserPassword}
+                  onChange={(e) => {
+                    setAdminUserPassword(e.target.value);
+                    if (adminUserCreateError) setAdminUserCreateError(null);
+                  }}
+                  placeholder="Mínimo 8 caracteres"
+                />
+              </FormControl>
+              <FormControl isRequired>
+                <FormLabel color="gray.700">Rol</FormLabel>
+                <Select
+                  value={adminUserRole}
+                  onChange={(e) => setAdminUserRole(e.target.value as "admin" | "professor" | "student")}
+                  isDisabled={!canManageUsers}
+                >
+                  {canManageUsers ? (
+                    <>
+                      <option value="professor">Profesor</option>
+                      <option value="admin">Administrador</option>
+                      <option value="student">Deportista</option>
+                    </>
+                  ) : (
+                    <option value="student">Deportista</option>
+                  )}
+                </Select>
+              </FormControl>
             </Stack>
-
-            {loading && (
-              <HStack color="gray.600">
-                <Spinner />
-                <Text>Cargando datos...</Text>
-              </HStack>
-            )}
-
-            {error && (
-              <Alert status="error" borderRadius="md">
-                <AlertIcon />
-                {error}
-              </Alert>
-            )}
-
-            <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
-              <StatCard title="Estado API" value={health?.status === "ok" ? "Online" : "Desconocido"} icon={healthIcon} helper={health ? `Entorno: ${health.env}` : "Sin respuesta"} />
-              <StatCard title="Ejercicios" value={stats.exercises.toString()} helper="Creados en la base" />
-              <StatCard title="Rutinas" value={stats.routines.toString()} helper="Plantillas semanales" />
-            </SimpleGrid>
-
-            <Stack spacing={6}>
-              <Heading size="md">Ejercicios</Heading>
-              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                {exercises.map((ex) => (
-                  <Box key={ex.id} p={{ base: 4, xl: 5 }} borderWidth="1px" borderRadius="lg" bg="white" shadow="sm">
-                    <HStack justify="space-between" mb={2}>
-                      <Heading size={{ base: "sm", xl: "md", "2xl": "lg" }}>{ex.name}</Heading>
-                      <Badge colorScheme={ex.is_active ? "green" : "gray"}>{ex.is_active ? "Activo" : "Inactivo"}</Badge>
-                    </HStack>
-                    <Text fontSize="sm" color="gray.600">{ex.description || "Sin Descripción"}</Text>
-                    <HStack spacing={4} mt={3} color="gray.700" fontWeight="medium">
-                      <Tag colorScheme="blue">{ex.distance_m} m</Tag>
-                      <Tag colorScheme="purple">{ex.arrows_count} flechas</Tag>
-                    </HStack>
-                  </Box>
-                ))}
-                {!exercises.length && !loading && (
-                  <Box p={{ base: 4, xl: 5 }} borderWidth="1px" borderRadius="lg" bg="white">
-                    <Text color="gray.600">Sin ejercicios cargados.</Text>
-                  </Box>
-                )}
-              </SimpleGrid>
-            </Stack>
-
-            <Stack spacing={6}>
-              <Heading size="md">Rutinas semanales</Heading>
-              <Stack spacing={4}>
-                {templateRoutines.map((routine) => (
-                  <Box key={routine.id} p={5} borderWidth="1px" borderRadius="lg" bg="white" shadow="sm">
-                    <HStack justify="space-between" mb={2}>
-                      <Heading size={{ base: "sm", xl: "md", "2xl": "lg" }}>{routine.name}</Heading>
-                      <Badge colorScheme={routine.is_active ? "green" : "gray"}>{routine.is_active ? "Activa" : "Inactiva"}</Badge>
-                    </HStack>
-                    {routine.description && (
-                      <Text fontSize="sm" color="gray.600" mb={3}>
-                        {routine.description}
-                      </Text>
-                    )}
-                    <Divider my={2} />
-                    <Stack spacing={3}>
-                      {routine.days.map((day) => (
-                        <Box key={day.id} p={3} borderWidth="1px" borderRadius="md" bg="gray.50">
-                          <HStack justify="space-between" mb={2}>
-                            <Text fontWeight="bold">{formatDay(day)}</Text>
-                            <Tag colorScheme="blue">Día {day.day_number}</Tag>
-                          </HStack>
-                          <VStack align="start" spacing={2}>
-                            {day.exercises.map((dex) => (
-                              <HStack key={dex.id} spacing={2} align="center">
-                                <Badge colorScheme="purple">Ej {dex.exercise_id}</Badge>
-                                <Text fontSize="sm">Orden {dex.sort_order}</Text>
-                                {dex.arrows_override !== null && dex.arrows_override !== undefined && <Tag colorScheme="orange">{dex.arrows_override} flechas</Tag>}
-                                {dex.distance_override_m !== null && dex.distance_override_m !== undefined && <Tag colorScheme="teal">{dex.distance_override_m} m</Tag>}
-                              </HStack>
-                            ))}
-                            {!day.exercises.length && <Text fontSize="sm" color="gray.500">Sin ejercicios en este Día.</Text>}
-                          </VStack>
-                        </Box>
-                      ))}
-                      {!routine.days.length && (
-                        <HStack color="gray.600">
-                          <WarningIcon />
-                          <Text fontSize="sm">Rutina sin Días configurados.</Text>
-                        </HStack>
-                      )}
-                    </Stack>
-                  </Box>
-                ))}
-                {!templateRoutines.length && !loading && (
-                  <Box p={{ base: 4, xl: 5 }} borderWidth="1px" borderRadius="lg" bg="white">
-                    <Text color="gray.600">Sin rutinas cargadas.</Text>
-                  </Box>
-                )}
-              </Stack>
-            </Stack>
-
-            <Stack spacing={6}>
-              <Heading size="md">Rutinas activas</Heading>
-              <Stack spacing={3}>
-                {activeAssignments.map((assignment) => (
-                  <Box key={assignment.id} p={{ base: 4, xl: 5 }} borderWidth="1px" borderRadius="lg" bg="white" shadow="sm">
-                    <HStack justify="space-between" align="start">
-                      <Stack spacing={1}>
-                        <Text fontWeight="bold" color="gray.900">
-                          {routineNameById.get(assignment.routine_id) || `Rutina #${assignment.routine_id}`}
-                        </Text>
-                        <Text color="gray.600" fontSize="sm">
-                          Deportista: {studentNameById.get(assignment.student_id) || `Deportista #${assignment.student_id}`}
-                        </Text>
-                        <Text color="gray.500" fontSize="xs">
-                          Semana: {formatDateEs(assignment.start_date)} a {formatDateEs(assignment.end_date)}
-                        </Text>
-                      </Stack>
-                      <Badge colorScheme="green">Activa</Badge>
-                    </HStack>
-                    <HStack justify="flex-end" pt={1}>
-                      <Button
-                        size={actionIconButtonSize}
-                        variant="outline"
-                        borderRadius="xl"
-                        borderColor="gray.300"
-                        color="black"
-                        _hover={{ bg: "red.700", borderColor: "red.800", color: "white" }}
-                        onClick={() => {
-                          setDeleteAssignedRoutineError(null);
-                          setDeleteAssignedRoutineTarget(assignment);
-                          setDeleteAssignedRoutineModalOpen(true);
-                        }}
-                      >
-                        <Box
-                          as="svg"
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          boxSize={actionIconSize}
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M10 11v6" />
-                          <path d="M14 11v6" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                          <path d="M3 6h18" />
-                          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                        </Box>
-                      </Button>
-                    </HStack>
-                  </Box>
-                ))}
-                {!activeAssignments.length && !loading && (
-                  <Box p={{ base: 4, xl: 5 }} borderWidth="1px" borderRadius="lg" bg="white">
-                    <Text color="gray.600">No hay rutinas activas asignadas.</Text>
-                  </Box>
-                )}
-              </Stack>
-            </Stack>
-          </Stack>
-        </Container>
-      </Box>
+          </ModalBody>
+          <ModalFooter borderTopWidth="1px" borderColor="gray.200">
+            <HStack spacing={3}>
+              <Button variant="outline" borderColor="gray.300" onClick={closeAdminUserModal} isDisabled={adminUserCreateLoading}>
+                Cancelar
+              </Button>
+              <Button
+                bg="#f97316"
+                color="white"
+                _hover={{ bg: "#ea580c" }}
+                _active={{ bg: "#c2410c" }}
+                onClick={() => { void handleCreateAdminUser(); }}
+                isLoading={adminUserCreateLoading}
+              >
+                Crear usuario
+              </Button>
+            </HStack>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </>
-  );
-}
-
-type StatCardProps = {
-  title: string;
-  value: string;
-  helper?: string;
-  icon?: ReactNode;
-};
-
-function StatCard({ title, value, helper, icon }: StatCardProps) {
-  return (
-    <Box p={{ base: 4, xl: 5 }} borderWidth="1px" borderRadius="lg" bg="white" shadow="sm">
-      <HStack justify="space-between" mb={2}>
-        <Text fontSize="sm" color="gray.500">
-          {title}
-        </Text>
-        {icon}
-      </HStack>
-      <Heading size="md">{value}</Heading>
-      {helper && (
-        <Text fontSize="sm" color="gray.600" mt={1}>
-          {helper}
-        </Text>
-      )}
-    </Box>
   );
 }
 

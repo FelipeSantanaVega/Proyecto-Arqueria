@@ -1,30 +1,61 @@
 # Frontend - Archery Training
 
-Stack: React + Vite + TypeScript + Chakra UI (+ i18n listo para es/en).
+Frontend React para login, gestion de ejercicios, deportistas, rutinas, asignaciones y perfil.
+
+## Stack
+- React 19
+- Vite
+- TypeScript
+- Chakra UI
+- pnpm
 
 ## Requisitos
-- Node 22+
-- pnpm (se usa el bin local: `npx pnpm ...` si no está global)
+- Node.js 20+
+- pnpm
 
-## Configuración
-1. Copia `.env.example` a `.env` y ajusta la URL de la API:
-   ```
-   VITE_API_BASE_URL=http://127.0.0.1:8000
-   ```
-2. Instala dependencias:
-   ```sh
-   cd frontend
-   npx pnpm install
-   ```
-3. Ejecuta en desarrollo:
-   ```sh
-   npx pnpm dev -- --host --port 5173
-   ```
+## Configuracion
+1. Copia `frontend/.env.example` a `frontend/.env`
+2. Configura la URL de la API:
 
-## Qué hace esta maqueta
-- Consume `/health`, `/exercises`, `/routines` del backend y muestra estado, ejercicios y rutinas semanales.
-- Usa Chakra UI para el layout y `i18next` preparado para es/en (actualmente fijo en es).
+```env
+VITE_API_BASE_URL=http://127.0.0.1:8000
+```
+
+3. Instala dependencias:
+
+```sh
+pnpm install
+```
+
+4. Ejecuta en desarrollo:
+
+```sh
+pnpm dev
+```
+
+App:
+- `http://localhost:5173`
+
+## Funcionalidades actuales
+- Login con JWT.
+- Persistencia de sesion con `localStorage` o `sessionStorage`.
+- Refresh automatico de `access_token`.
+- Logout con limpieza local y soporte para revocacion de refresh token.
+- Cambio de contrasena.
+- Toggle para ver/ocultar contrasenas en formularios.
+- Panel de profesor/admin con secciones:
+  - administrar rutinas activas
+  - rutinas
+  - ejercicios
+  - alumnos
+  - perfil
+- Carga de datos desde la API:
+  - ejercicios
+  - rutinas
+  - deportistas
+  - asignaciones
+  - usuarios
 
 ## Notas
-- El package manager está fijado a pnpm en `package.json` (`packageManager`).
-- Si ya tienes pnpm global, puedes usar `pnpm dev` directamente.
+- El proyecto usa `pnpm` como package manager fijo.
+- Si el backend corre en Docker local, usa `http://127.0.0.1:8000` como `VITE_API_BASE_URL`.

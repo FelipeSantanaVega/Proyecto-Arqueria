@@ -6,27 +6,39 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from ..deps import get_db
-from ..models import Routine, RoutineDay, RoutineDayExercise, Exercise
+from ..models import Routine, RoutineDay, RoutineDayExercise, Exercise, User
+from ..ownership import apply_owner_visibility, ensure_record_access
 from ..schemas import RoutineCreate, RoutineOut
-from ..security import require_roles
+from ..security import get_current_user, require_roles
 
 router = APIRouter(prefix="/routines", tags=["routines"])
 
 
 @router.get("", response_model=list[RoutineOut])
-def list_routines(db: Session = Depends(get_db)):
-    stmt = (
+def list_routines(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_roles({"admin", "professor"})),
+):
+    stmt = apply_owner_visibility(
         select(Routine)
         .options(
             selectinload(Routine.days).selectinload(RoutineDay.exercises)
         )
-        .order_by(Routine.name)
+        .order_by(Routine.name),
+        Routine,
+        current_user,
     )
     return db.scalars(stmt).unique().all()
 
 
 @router.get("/{routine_id}", response_model=RoutineOut)
-def get_routine(routine_id: int, db: Session = Depends(get_db)):
+def get_routine(
+    routine_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_roles({"admin", "professor"})),
+):
     stmt = (
         select(Routine)
         .where(Routine.id == routine_id)
@@ -37,6 +49,7 @@ def get_routine(routine_id: int, db: Session = Depends(get_db)):
     routine = db.scalars(stmt).first()
     if not routine:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rutina no encontrada")
+    ensure_record_access(routine.created_by_user_id, current_user, "Rutina no encontrada")
     return routine
 
 
@@ -44,6 +57,7 @@ def get_routine(routine_id: int, db: Session = Depends(get_db)):
 def create_routine(
     payload: RoutineCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _: None = Depends(require_roles({"admin", "professor"})),
 ):
     day_numbers = [d.day_number for d in payload.days]
@@ -60,7 +74,12 @@ def create_routine(
     # Validar ejercicios existentes
     exercise_ids = {ex.exercise_id for d in payload.days for ex in d.exercises}
     if exercise_ids:
-        found = db.scalars(select(Exercise.id).where(Exercise.id.in_(exercise_ids))).all()
+        exercise_stmt = apply_owner_visibility(
+            select(Exercise.id).where(Exercise.id.in_(exercise_ids)),
+            Exercise,
+            current_user,
+        )
+        found = db.scalars(exercise_stmt).all()
         if len(found) != len(exercise_ids):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -68,6 +87,7 @@ def create_routine(
             )
 
     routine = Routine(
+        created_by_user_id=current_user.id,
         name=payload.name,
         description=payload.description,
         is_active=payload.is_active,
@@ -127,11 +147,13 @@ def update_routine(
     routine_id: int,
     payload: RoutineCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _: None = Depends(require_roles({"admin", "professor"})),
 ):
     routine = db.get(Routine, routine_id)
     if not routine:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rutina no encontrada")
+    ensure_record_access(routine.created_by_user_id, current_user, "Rutina no encontrada")
 
     day_numbers = [d.day_number for d in payload.days]
     if len(day_numbers) != len(set(day_numbers)):
@@ -147,7 +169,12 @@ def update_routine(
 
     exercise_ids = {ex.exercise_id for d in payload.days for ex in d.exercises}
     if exercise_ids:
-        found = db.scalars(select(Exercise.id).where(Exercise.id.in_(exercise_ids))).all()
+        exercise_stmt = apply_owner_visibility(
+            select(Exercise.id).where(Exercise.id.in_(exercise_ids)),
+            Exercise,
+            current_user,
+        )
+        found = db.scalars(exercise_stmt).all()
         if len(found) != len(exercise_ids):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -200,10 +227,12 @@ def update_routine(
 def delete_routine(
     routine_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _: None = Depends(require_roles({"admin", "professor"})),
 ):
     routine = db.get(Routine, routine_id)
     if not routine:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rutina no encontrada")
+    ensure_record_access(routine.created_by_user_id, current_user, "Rutina no encontrada")
     db.delete(routine)
     db.commit()

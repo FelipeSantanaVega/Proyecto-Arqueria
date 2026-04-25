@@ -6,21 +6,56 @@ from datetime import date, timedelta, datetime
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from ..deps import get_db
-from ..models import Exercise, StudentRoutineAssignment, Student, Routine, RoutineDay, RoutineDayExercise, StudentRoutineHistory
+from ..models import Exercise, StudentRoutineAssignment, Student, Routine, RoutineDay, RoutineDayExercise, StudentRoutineHistory, User
+from ..ownership import ensure_record_access, resolve_owner_user_id
 from ..schemas import AssignmentCreate, AssignmentOut, AssignmentStatusUpdate, AssignmentHistoryOut
-from ..security import require_roles
+from ..security import get_current_user, require_roles
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
 
 
+def _student_visibility_filter(current_user: User):
+    if current_user.role == "admin":
+        return True
+    return or_(
+        Student.created_by_user_id == current_user.id,
+        Student.created_by_user_id.is_(None),
+    )
+
+
+def _routine_visibility_filter(current_user: User):
+    if current_user.role == "admin":
+        return True
+    return or_(
+        Routine.created_by_user_id == current_user.id,
+        Routine.created_by_user_id.is_(None),
+    )
+
+
 @router.get("", response_model=list[AssignmentOut])
-def list_assignments(db: Session = Depends(get_db)):
-    stmt = select(StudentRoutineAssignment).order_by(StudentRoutineAssignment.created_at.desc())
+def list_assignments(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_roles({"admin", "professor"})),
+):
+    stmt = (
+        select(StudentRoutineAssignment)
+        .join(Student, Student.id == StudentRoutineAssignment.student_id)
+        .join(Routine, Routine.id == StudentRoutineAssignment.routine_id)
+        .order_by(StudentRoutineAssignment.created_at.desc())
+    )
+    if current_user.role != "admin":
+        stmt = stmt.where(
+            and_(
+                _student_visibility_filter(current_user),
+                _routine_visibility_filter(current_user),
+            )
+        )
     return db.scalars(stmt).all()
 
 
@@ -29,11 +64,19 @@ def list_assignment_history(
     student_id: int | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _: None = Depends(require_roles({"admin", "professor"})),
 ):
     stmt = select(StudentRoutineHistory).order_by(StudentRoutineHistory.completed_at.desc())
     if student_id is not None:
         stmt = stmt.where(StudentRoutineHistory.student_id == student_id)
+    if current_user.role != "admin":
+        stmt = stmt.where(
+            or_(
+                StudentRoutineHistory.created_by_user_id == current_user.id,
+                StudentRoutineHistory.created_by_user_id.is_(None),
+            )
+        )
     return db.scalars(stmt.limit(limit)).all()
 
 
@@ -41,35 +84,59 @@ def list_assignment_history(
 def create_assignment(
     payload: AssignmentCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _: None = Depends(require_roles({"admin", "professor"})),
 ):
     # Validar que existan student y routine
-    if not db.get(Student, payload.student_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alumno no encontrado")
-    if not db.get(Routine, payload.routine_id):
+    student = db.get(Student, payload.student_id)
+    if not student:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deportista no encontrado")
+    ensure_record_access(student.created_by_user_id, current_user, "Deportista no encontrado")
+    routine = db.get(Routine, payload.routine_id)
+    if not routine:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rutina no encontrada")
+    ensure_record_access(routine.created_by_user_id, current_user, "Rutina no encontrada")
 
-    # Regla de negocio: un alumno no puede tener más de una rutina activa en la misma semana.
+    # Regla de negocio: un deportista no puede tener más de una rutina activa en la misma semana.
     if payload.status == "active":
         start = payload.start_date or date.today()
         week_start = start - timedelta(days=start.weekday())
         week_end = week_start + timedelta(days=6)
-        stmt = select(StudentRoutineAssignment).where(
-            and_(
-                StudentRoutineAssignment.student_id == payload.student_id,
-                StudentRoutineAssignment.status == "active",
-                StudentRoutineAssignment.start_date <= week_end,
-                StudentRoutineAssignment.end_date >= week_start,
+        stmt = (
+            select(StudentRoutineAssignment)
+            .join(Student, Student.id == StudentRoutineAssignment.student_id)
+            .join(Routine, Routine.id == StudentRoutineAssignment.routine_id)
+            .where(
+                and_(
+                    StudentRoutineAssignment.student_id == payload.student_id,
+                    StudentRoutineAssignment.status == "active",
+                    StudentRoutineAssignment.start_date <= week_end,
+                    StudentRoutineAssignment.end_date >= week_start,
+                )
             )
         )
+        if current_user.role != "admin":
+            stmt = stmt.where(
+                and_(
+                    _student_visibility_filter(current_user),
+                    _routine_visibility_filter(current_user),
+                )
+            )
         existing = db.scalars(stmt).first()
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El alumno ya tiene una rutina activa en esa semana",
+                detail="El deportista ya tiene una rutina activa en esa semana",
             )
 
-    assignment = StudentRoutineAssignment(**payload.dict())
+    assignment = StudentRoutineAssignment(
+        **payload.dict(),
+        created_by_user_id=resolve_owner_user_id(
+            current_user,
+            student.created_by_user_id,
+            routine.created_by_user_id,
+        ),
+    )
     db.add(assignment)
     try:
         db.commit()
@@ -87,11 +154,16 @@ def create_assignment(
 def delete_assignment(
     assignment_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _: None = Depends(require_roles({"admin", "professor"})),
 ):
     assignment = db.get(StudentRoutineAssignment, assignment_id)
     if not assignment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asignación no encontrada")
+    student = db.get(Student, assignment.student_id)
+    routine = db.get(Routine, assignment.routine_id)
+    ensure_record_access(student.created_by_user_id if student else assignment.created_by_user_id, current_user, "Asignación no encontrada")
+    ensure_record_access(routine.created_by_user_id if routine else assignment.created_by_user_id, current_user, "Asignación no encontrada")
     db.delete(assignment)
     db.commit()
 
@@ -101,9 +173,10 @@ def update_assignment_status(
     assignment_id: int,
     payload: AssignmentStatusUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _: None = Depends(require_roles({"admin", "professor"})),
 ):
-    # Futuro: permitir role "student" validando ownership alumno<->usuario.
+    # Futuro: permitir role "student" validando ownership deportista<->usuario.
     stmt = (
         select(StudentRoutineAssignment)
         .where(StudentRoutineAssignment.id == assignment_id)
@@ -118,6 +191,8 @@ def update_assignment_status(
     assignment = db.scalars(stmt).first()
     if not assignment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asignación no encontrada")
+    ensure_record_access(assignment.student.created_by_user_id, current_user, "Asignación no encontrada")
+    ensure_record_access(assignment.routine.created_by_user_id, current_user, "Asignación no encontrada")
     assignment.status = payload.status
     if payload.status == "finished" and assignment.end_date is None:
         assignment.end_date = date.today()
@@ -161,9 +236,21 @@ def update_assignment_status(
             history.student_observations = (payload.student_observations or "").strip() or None
             history.weekly_total_arrows = weekly_total
             history.snapshot_json = json.dumps(snapshot, ensure_ascii=False)
+            history.created_by_user_id = resolve_owner_user_id(
+                current_user,
+                assignment.created_by_user_id,
+                assignment.student.created_by_user_id,
+                assignment.routine.created_by_user_id,
+            )
         else:
             db.add(
                 StudentRoutineHistory(
+                    created_by_user_id=resolve_owner_user_id(
+                        current_user,
+                        assignment.created_by_user_id,
+                        assignment.student.created_by_user_id,
+                        assignment.routine.created_by_user_id,
+                    ),
                     assignment_id=assignment.id,
                     student_id=assignment.student_id,
                     student_full_name=assignment.student.full_name,
@@ -379,6 +466,7 @@ def _sanitize_filename(value: str) -> str:
 def export_assignment_pdf(
     assignment_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _: None = Depends(require_roles({"admin", "professor"})),
 ):
     stmt = (
@@ -395,6 +483,8 @@ def export_assignment_pdf(
     assignment = db.scalars(stmt).first()
     if not assignment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asignación no encontrada")
+    ensure_record_access(assignment.student.created_by_user_id, current_user, "Asignación no encontrada")
+    ensure_record_access(assignment.routine.created_by_user_id, current_user, "Asignación no encontrada")
 
     # Force loading exercise relation for routine day items.
     routine = assignment.routine

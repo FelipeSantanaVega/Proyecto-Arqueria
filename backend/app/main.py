@@ -5,10 +5,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from .auth_schema import ensure_auth_schema
 from .deps import SessionLocal, get_db, settings
 from .exercise_rounds import ensure_exercise_rounds_schema
+from .ownership import ensure_ownership_schema
 from .routine_retention import ensure_routine_schema
-from .routers import exercises, students, routines, assignments, auth
+from .routers import exercises, students, routines, assignments, auth, users
 from .student_retention import ensure_student_retention_schema, purge_inactive_students
 
 app = FastAPI(
@@ -34,6 +36,8 @@ def startup_maintenance():
         ensure_student_retention_schema(db)
         ensure_routine_schema(db)
         ensure_exercise_rounds_schema(db)
+        ensure_auth_schema(db)
+        ensure_ownership_schema(db)
         purge_inactive_students(db)
     finally:
         db.close()
@@ -56,6 +60,7 @@ def root():
 
 # Routers
 app.include_router(auth.router)
+app.include_router(users.router)
 app.include_router(exercises.router)
 app.include_router(students.router)
 app.include_router(routines.router)

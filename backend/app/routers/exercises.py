@@ -5,9 +5,10 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from ..deps import get_db
+from ..ownership import apply_owner_visibility, ensure_record_access
 from ..schemas import ExerciseCreate, ExerciseOut, ExerciseUpdate
-from ..models import Exercise
-from ..security import require_roles
+from ..models import Exercise, User
+from ..security import get_current_user, require_roles
 
 router = APIRouter(prefix="/exercises", tags=["exercises"])
 
@@ -43,8 +44,12 @@ def _apply_rounds_logic(data: dict, *, existing: Exercise | None = None) -> dict
 
 
 @router.get("", response_model=list[ExerciseOut])
-def list_exercises(db: Session = Depends(get_db)):
-    stmt = select(Exercise).order_by(Exercise.name)
+def list_exercises(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_roles({"admin", "professor"})),
+):
+    stmt = apply_owner_visibility(select(Exercise), Exercise, current_user).order_by(Exercise.name)
     return db.scalars(stmt).all()
 
 
@@ -52,9 +57,11 @@ def list_exercises(db: Session = Depends(get_db)):
 def create_exercise(
     payload: ExerciseCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _: None = Depends(require_roles({"admin", "professor"})),
 ):
     payload_data = _apply_rounds_logic(payload.dict())
+    payload_data["created_by_user_id"] = current_user.id
     exercise = Exercise(**payload_data)
     db.add(exercise)
     db.commit()
@@ -63,10 +70,16 @@ def create_exercise(
 
 
 @router.get("/{exercise_id}", response_model=ExerciseOut)
-def get_exercise(exercise_id: int, db: Session = Depends(get_db)):
+def get_exercise(
+    exercise_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_roles({"admin", "professor"})),
+):
     exercise = db.get(Exercise, exercise_id)
     if not exercise:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ejercicio no encontrado")
+    ensure_record_access(exercise.created_by_user_id, current_user, "Ejercicio no encontrado")
     return exercise
 
 
@@ -75,11 +88,13 @@ def update_exercise(
     exercise_id: int,
     payload: ExerciseUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _: None = Depends(require_roles({"admin", "professor"})),
 ):
     exercise = db.get(Exercise, exercise_id)
     if not exercise:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ejercicio no encontrado")
+    ensure_record_access(exercise.created_by_user_id, current_user, "Ejercicio no encontrado")
     payload_data = _apply_rounds_logic(payload.dict(), existing=exercise)
     for field, value in payload_data.items():
         setattr(exercise, field, value)
@@ -92,11 +107,13 @@ def update_exercise(
 def delete_exercise(
     exercise_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _: None = Depends(require_roles({"admin", "professor"})),
 ):
     exercise = db.get(Exercise, exercise_id)
     if not exercise:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ejercicio no encontrado")
+    ensure_record_access(exercise.created_by_user_id, current_user, "Ejercicio no encontrado")
 
     reference_rows = db.execute(
         text(

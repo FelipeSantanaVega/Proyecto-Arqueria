@@ -14,8 +14,57 @@ class LoginRequest(BaseModel):
 
 class LoginResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
     detail: Optional[str] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+    confirm_password: str
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: Optional[str] = None
+
+
+class AuthMeResponse(BaseModel):
+    id: int
+    username: str
+    role: str
+    is_active: bool
+    preferred_lang: str
+
+
+# Users
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    role: str = Field(pattern="^(admin|professor|student)$")
+    is_active: bool = True
+
+
+class UserAdminUpdate(BaseModel):
+    role: str = Field(pattern="^(admin|professor|student)$")
+    is_active: bool
+
+
+class UserOut(BaseModel):
+    id: int
+    username: str
+    role: str
+    is_active: bool
+    preferred_lang: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 # Exercises
