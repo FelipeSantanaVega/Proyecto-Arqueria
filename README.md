@@ -1,6 +1,6 @@
 # Proyecto Arqueria
 
-Aplicacion web para gestionar entrenamientos de tiro con arco: ejercicios, deportistas, rutinas, asignaciones semanales, historial y exportacion PDF.
+Aplicacion web para gestionar entrenamientos de tiro con arco: ejercicios, deportistas, rutinas, asignaciones semanales, historial, exportacion PDF y cuentas vinculadas para deportistas.
 
 ## Stack
 - Backend: FastAPI + SQLAlchemy + Poetry
@@ -77,11 +77,18 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 - Cambio de contrasena con invalidacion de sesion.
 - Persistencia de sesion en `localStorage` o `sessionStorage`.
 - Auto-refresh de access token en frontend cuando vence.
+- Vista responsive para:
+  - escritorio
+  - tablet como escritorio compacto
+  - movil con navegacion y flujos dedicados
+- Inicio del profesor con resumen, accesos rapidos y rutinas en curso.
 - Gestion de ejercicios:
   - crear, editar, eliminar
   - logica de rondas y flechas por ronda
 - Gestion de deportistas:
   - crear, editar, activar/desactivar
+  - creacion unificada de cuenta + ficha de deportista
+  - vinculacion opcional entre `students` y `users`
   - purga de inactivos segun reglas del backend
 - Gestion de rutinas:
   - plantillas y rutinas temporales
@@ -95,6 +102,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
   - admin y professor pueden crear cuentas
   - professor solo puede crear usuarios `student`
 - Aislamiento por propietario en ejercicios, rutinas y deportistas.
+- Exportacion PDF de rutinas activa en escritorio y movil.
 
 ## Endpoints principales
 
@@ -138,6 +146,78 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 - `PATCH /assignments/{id}/status`
 - `DELETE /assignments/{id}`
 - `GET /assignments/{id}/pdf`
+- `POST /assignments/{id}/pdf`
+- `GET /assignments/{id}/pdf-download`
+
+## Vista movil y prueba en telefono real
+
+### Desde la PC
+1. Levanta backend y frontend.
+2. Abre `http://localhost:5173`.
+3. Usa DevTools responsive.
+
+### Desde un telefono en la misma red
+1. Asegura que Vite escuche en LAN.
+2. Configura `frontend/.env` o `frontend/.env.local`:
+
+```env
+VITE_API_BASE_URL=http://TU_IP_LOCAL:8000
+```
+
+3. Agrega el origen LAN del frontend a `CORS_ORIGINS` del backend.
+4. Reinicia backend y frontend.
+5. Abre en el telefono:
+
+```text
+http://TU_IP_LOCAL:5173
+```
+
+## Base de datos y migracion
+
+### Esquema actual relevante
+- `students.user_id` enlaza deportistas con cuentas de usuario.
+- `created_by_user_id` se usa para aislamiento por profesor en:
+  - `students`
+  - `routines`
+  - `exercises`
+  - `student_routine_assignments`
+  - `student_routine_history`
+- Las restricciones unicas principales ya no son globales:
+  - `uq_students_owner_document`
+  - `uq_routines_owner_name`
+
+### SQL base
+- Esquema PostgreSQL actual:
+  - `db/schema_postgres.sql`
+
+### Migracion de datos del servidor al esquema nuevo
+- Archivo generado:
+  - [archery_training_server_merge_2026-05-11.sql](E:/Proyecto%20Arqueria/Backup%20DB/archery_training_server_merge_2026-05-11.sql)
+
+Ese script:
+- recrea las tablas principales
+- crea la estructura nueva
+- vuelve a insertar los datos del dump del servidor
+- intenta vincular `students.user_id` con `users.id` cuando `users.username = students.document_number`
+
+Importante:
+- el script mantiene los datos del dump usado como origen
+- no debe ejecutarse sin backup previo
+- si hubo cambios nuevos en produccion despues de ese dump, no estaran incluidos
+
+## Despliegue recomendado
+1. Sacar un dump fresco de produccion.
+2. Crear o preparar una base con el esquema nuevo.
+3. Aplicar el SQL de migracion basado en el dump mas reciente.
+4. Subir backend nuevo.
+5. Probar:
+   - login
+   - deportistas
+   - creacion de cuenta de deportista
+   - asignacion de rutina
+   - exportacion PDF
+6. Subir frontend.
+7. Mantener rollback listo con dump y backend anterior.
 
 ## Notas
 - El backend corre tareas de mantenimiento al iniciar para ajustar esquema y retencion.
