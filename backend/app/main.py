@@ -11,6 +11,7 @@ from .exercise_rounds import ensure_exercise_rounds_schema
 from .ownership import ensure_ownership_schema
 from .routine_retention import ensure_routine_schema
 from .routers import exercises, students, routines, assignments, auth, users
+from .student_accounts import ensure_student_accounts_schema
 from .student_retention import ensure_student_retention_schema, purge_inactive_students
 
 app = FastAPI(
@@ -38,6 +39,7 @@ def startup_maintenance():
         ensure_exercise_rounds_schema(db)
         ensure_auth_schema(db)
         ensure_ownership_schema(db)
+        ensure_student_accounts_schema(db)
         purge_inactive_students(db)
     finally:
         db.close()

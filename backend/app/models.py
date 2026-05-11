@@ -90,6 +90,7 @@ class Student(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.id"), unique=True, nullable=True)
     created_by_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=True)
     full_name: Mapped[str] = mapped_column(String(150), nullable=False)
     document_number: Mapped[str] = mapped_column(String(50), nullable=False)

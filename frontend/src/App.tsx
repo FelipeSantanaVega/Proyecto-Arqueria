@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import {
   Alert,
   AlertIcon,
@@ -32,6 +32,7 @@ import {
   Stack,
   Tag,
   Text,
+  useMediaQuery,
 } from "@chakra-ui/react";
 import { CheckCircleIcon, SearchIcon, WarningIcon } from "@chakra-ui/icons";
 import { keyframes } from "@emotion/react";
@@ -111,6 +112,193 @@ function PasswordInput(props: PasswordInputProps) {
   );
 }
 
+const mobileConfirmSheetSlideUp = keyframes`
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+`;
+
+const mobileConfirmSheetSlideDown = keyframes`
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+`;
+
+const MOBILE_CONFIRM_SHEET_ANIMATION_MS = 180;
+
+function MobileDangerConfirmSheet({
+  isOpen,
+  title,
+  message,
+  confirmLabel,
+  error,
+  tone = "danger",
+  isLoading = false,
+  onConfirm,
+  onClose,
+}: {
+  isOpen: boolean;
+  title: string;
+  message: ReactNode;
+  confirmLabel: string;
+  error?: string | null;
+  tone?: "danger" | "success";
+  isLoading?: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const [shouldRender, setShouldRender] = useState(isOpen);
+  const [isClosing, setIsClosing] = useState(false);
+  const closeTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (closeTimeoutRef.current !== null) {
+        window.clearTimeout(closeTimeoutRef.current);
+        closeTimeoutRef.current = null;
+      }
+      setShouldRender(true);
+      setIsClosing(false);
+      return;
+    }
+    if (!shouldRender) return;
+    setIsClosing(true);
+    closeTimeoutRef.current = window.setTimeout(() => {
+      setShouldRender(false);
+      setIsClosing(false);
+      closeTimeoutRef.current = null;
+    }, MOBILE_CONFIRM_SHEET_ANIMATION_MS);
+  }, [isOpen, shouldRender]);
+
+  useEffect(() => () => {
+    if (closeTimeoutRef.current !== null) {
+      window.clearTimeout(closeTimeoutRef.current);
+    }
+  }, []);
+
+  if (!shouldRender) return null;
+  const success = tone === "success";
+
+  return (
+    <Box position="fixed" inset={0} zIndex={90} bg="rgba(15, 23, 42, 0.32)" onClick={onClose}>
+      <Box
+        position="absolute"
+        left={0}
+        right={0}
+        bottom={0}
+        bg="#f8fafc"
+        borderTopRadius="22px"
+        px={4}
+        pt={3}
+        pb="calc(1rem + env(safe-area-inset-bottom))"
+        boxShadow="0 -18px 48px rgba(15, 23, 42, 0.16)"
+        animation={`${isClosing ? mobileConfirmSheetSlideDown : mobileConfirmSheetSlideUp} ${MOBILE_CONFIRM_SHEET_ANIMATION_MS}ms ease-out`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Stack spacing={4}>
+          <Box alignSelf="center" w="52px" h="5px" borderRadius="full" bg="#e5d5ca" />
+          <HStack spacing={3} align="center">
+            <Box w="42px" h="42px" borderRadius="14px" bg={success ? "#dcfce7" : "#fee2e2"} display="flex" alignItems="center" justifyContent="center" flexShrink={0}>
+              <Box
+                as="svg"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                boxSize="18px"
+                fill="none"
+                stroke={success ? "#16a34a" : "#ef4444"}
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                {success ? (
+                  <>
+                    <path d="m16 11 2 2 4-4" />
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                  </>
+                ) : (
+                  <>
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </>
+                )}
+              </Box>
+            </Box>
+            <Text fontSize="18px" fontWeight="800" color="#1f2937">
+              {title}
+            </Text>
+          </HStack>
+
+          <Text color="#667085" fontSize="14px" lineHeight="1.6">
+            {message}
+          </Text>
+
+          {error && (
+            <Alert status="error" borderRadius="14px">
+              <AlertIcon />
+              {error}
+            </Alert>
+          )}
+
+          <Stack spacing={2.5}>
+            <Button
+              bg={success ? "#16a34a" : "#ef4444"}
+              color="white"
+              h="50px"
+              borderRadius="16px"
+              _hover={{ bg: success ? "#15803d" : "#dc2626" }}
+              _active={{ bg: success ? "#166534" : "#b91c1c" }}
+              onClick={onConfirm}
+              isLoading={isLoading}
+            >
+              {confirmLabel}
+            </Button>
+            <Button
+              variant="outline"
+              bg="white"
+              borderColor="#d1d5db"
+              color="#1f2937"
+              h="50px"
+              borderRadius="16px"
+              _hover={{ bg: "gray.50" }}
+              onClick={onClose}
+              isDisabled={isLoading}
+            >
+              Cancelar
+            </Button>
+          </Stack>
+        </Stack>
+      </Box>
+    </Box>
+  );
+}
+
+function MobileBottomNavItem({ label, active, onClick, children }: { label: string; active: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <Stack as="button" type="button" spacing={1} align="center" justify="center" minW="64px" color={active ? "#f97316" : "#94a3b8"} onClick={onClick}>
+      <Box as="svg" viewBox="0 0 24 24" boxSize="18px" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        {children}
+      </Box>
+      <Text fontSize="9px" fontWeight={active ? "700" : "500"}>
+        {label}
+      </Text>
+    </Stack>
+  );
+}
+
 const routineDaySlide = keyframes`
   from {
     opacity: 0;
@@ -151,10 +339,35 @@ const routineOrderButtonMoveDown = keyframes`
   }
 `;
 
+const createStudentMobileSlideIn = keyframes`
+  from {
+    opacity: 0.96;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+`;
+
+const createStudentMobileSlideOut = keyframes`
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0.96;
+    transform: translateX(100%);
+  }
+`;
+
+const CREATE_STUDENT_MOBILE_ANIMATION_MS = 200;
+
 type AppView = "dashboard" | "login" | "professor";
-type ProfSection = "administrar_rutinas" | "perfil" | "rutina" | "ejercicio" | "alumno";
+type ProfSection = "inicio" | "administrar_rutinas" | "perfil" | "rutina" | "ejercicio" | "alumno";
 
 const SECTION_TO_PATH: Record<ProfSection, string> = {
+  inicio: "inicio",
   administrar_rutinas: "administrar-rutinas",
   rutina: "rutinas",
   ejercicio: "ejercicios",
@@ -332,10 +545,10 @@ function VerticalDayWheelPicker({
 }
 
 function getSectionFromPath(pathname: string): ProfSection {
-  if (!pathname.startsWith("/profesor")) return "administrar_rutinas";
+  if (!pathname.startsWith("/profesor")) return "inicio";
   const sectionPath = pathname.split("/")[2];
-  if (!sectionPath) return "administrar_rutinas";
-  return PATH_TO_SECTION[sectionPath] ?? "administrar_rutinas";
+  if (!sectionPath) return "inicio";
+  return PATH_TO_SECTION[sectionPath] ?? "inicio";
 }
 
 function getViewFromPath(pathname: string, hasToken: boolean): AppView {
@@ -356,6 +569,7 @@ function getPathForSection(section: ProfSection): string {
 }
 
 const AdminRoutinesSection = lazy(() => import("./sections/AdminRoutinesSection"));
+const HomeSection = lazy(() => import("./sections/HomeSection"));
 const RoutinesSection = lazy(() => import("./sections/RoutinesSection"));
 const ExercisesSection = lazy(() => import("./sections/ExercisesSection"));
 const StudentsSection = lazy(() => import("./sections/StudentsSection"));
@@ -404,6 +618,7 @@ type Routine = {
 
 type Student = {
   id: number;
+  user_id?: number | null;
   full_name: string;
   document_number: string;
   contact?: string | null;
@@ -670,6 +885,7 @@ function App() {
   const [editDescription, setEditDescription] = useState("");
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [isClosingEditExerciseMobileScreen, setIsClosingEditExerciseMobileScreen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createRoutineModalOpen, setCreateRoutineModalOpen] = useState(false);
   const [routineModalStep, setRoutineModalStep] = useState<0 | 1 | 2 | 3 | 4>(0);
@@ -686,12 +902,14 @@ function App() {
   const [routineCreateAddExerciseModalOpen, setRoutineCreateAddExerciseModalOpen] = useState(false);
   const [routineCreateAddExerciseDayKey, setRoutineCreateAddExerciseDayKey] = useState<string | null>(null);
   const [routineCreateAddExerciseSearch, setRoutineCreateAddExerciseSearch] = useState("");
+  const routineCreateAddExerciseMobileHistoryActiveRef = useRef(false);
   const [routineCreateEditExerciseModalOpen, setRoutineCreateEditExerciseModalOpen] = useState(false);
   const [routineCreateEditTarget, setRoutineCreateEditTarget] = useState<{ dayKey: string; exerciseId: number; itemIndex: number } | null>(null);
   const [routineCreateEditRounds, setRoutineCreateEditRounds] = useState<number | "">("");
   const [routineCreateEditArrows, setRoutineCreateEditArrows] = useState<number | "">("");
   const [routineCreateEditDistance, setRoutineCreateEditDistance] = useState<number | "">("");
   const [routineCreateEditDescription, setRoutineCreateEditDescription] = useState("");
+  const routineCreateEditExerciseMobileHistoryActiveRef = useRef(false);
   const [deleteRoutineDayConfirmOpen, setDeleteRoutineDayConfirmOpen] = useState(false);
   const [deleteRoutineDayTargetNumber, setDeleteRoutineDayTargetNumber] = useState<number | null>(null);
   const [routineModalBodyHeight, setRoutineModalBodyHeight] = useState<number | null>(null);
@@ -740,12 +958,14 @@ function App() {
   const [addExerciseDayModalOpen, setAddExerciseDayModalOpen] = useState(false);
   const [addExerciseTargetDayKey, setAddExerciseTargetDayKey] = useState<string | null>(null);
   const [addExerciseSearch, setAddExerciseSearch] = useState("");
+  const addExerciseDayMobileHistoryActiveRef = useRef(false);
   const [editAssignExerciseModalOpen, setEditAssignExerciseModalOpen] = useState(false);
   const [editAssignExerciseTarget, setEditAssignExerciseTarget] = useState<{ dayKey: string; exerciseId: number; itemIndex: number } | null>(null);
   const [editAssignRounds, setEditAssignRounds] = useState<number | "">("");
   const [editAssignArrows, setEditAssignArrows] = useState<number | "">("");
   const [editAssignDistance, setEditAssignDistance] = useState<number | "">("");
   const [editAssignDescription, setEditAssignDescription] = useState("");
+  const editAssignExerciseMobileHistoryActiveRef = useRef(false);
   const [deleteAssignDayConfirmOpen, setDeleteAssignDayConfirmOpen] = useState(false);
   const [deleteAssignDayTargetNumber, setDeleteAssignDayTargetNumber] = useState<number | null>(null);
   const [pendingScrollCreateSummaryToBottom, setPendingScrollCreateSummaryToBottom] = useState(false);
@@ -764,6 +984,7 @@ function App() {
   const [createDescription, setCreateDescription] = useState("");
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [isClosingCreateExerciseMobileScreen, setIsClosingCreateExerciseMobileScreen] = useState(false);
   const [createStudentModalOpen, setCreateStudentModalOpen] = useState(false);
   const [editStudentModalOpen, setEditStudentModalOpen] = useState(false);
   const [editStudentTarget, setEditStudentTarget] = useState<Student | null>(null);
@@ -774,7 +995,10 @@ function App() {
   const [editStudentArrowsAvailable, setEditStudentArrowsAvailable] = useState<number | "">("");
   const [editStudentLoading, setEditStudentLoading] = useState(false);
   const [editStudentError, setEditStudentError] = useState<string | null>(null);
+  const [isClosingEditStudentMobileScreen, setIsClosingEditStudentMobileScreen] = useState(false);
   const [studentFullName, setStudentFullName] = useState("");
+  const [studentAccountUsername, setStudentAccountUsername] = useState("");
+  const [studentAccountPassword, setStudentAccountPassword] = useState("");
   const [adminAssignModalOpen, setAdminAssignModalOpen] = useState(false);
   const [adminAssignSearch, setAdminAssignSearch] = useState("");
   const [adminAssignSelectedStudentId, setAdminAssignSelectedStudentId] = useState<number | null>(null);
@@ -784,6 +1008,7 @@ function App() {
   const [studentArrowsAvailable, setStudentArrowsAvailable] = useState<number | "">("");
   const [createStudentLoading, setCreateStudentLoading] = useState(false);
   const [createStudentError, setCreateStudentError] = useState<string | null>(null);
+  const [isClosingCreateStudentMobileScreen, setIsClosingCreateStudentMobileScreen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteExercise, setDeleteExercise] = useState<Exercise | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -818,6 +1043,7 @@ function App() {
   const [saveAssignmentError, setSaveAssignmentError] = useState<string | null>(null);
   const [saveAssignmentLoadingId, setSaveAssignmentLoadingId] = useState<number | null>(null);
   const [exportAssignmentLoadingId, setExportAssignmentLoadingId] = useState<number | null>(null);
+  const [exportAssignmentError, setExportAssignmentError] = useState<string | null>(null);
   const [preAssignConflictModalOpen, setPreAssignConflictModalOpen] = useState(false);
   const [preAssignConflictStudent, setPreAssignConflictStudent] = useState<Student | null>(null);
   const [preAssignConflictAssignment, setPreAssignConflictAssignment] = useState<Assignment | null>(null);
@@ -826,7 +1052,21 @@ function App() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [token, setToken] = useState<string | null>(() => getStoredToken());
+  const [isDesktopViewport] = useMediaQuery("(min-width: 48em)");
   const [userRole, setUserRole] = useState<string | null>(() => parseRoleFromToken(getStoredToken()));
+  const studentHistoryMobileHistoryActiveRef = useRef(false);
+  const closeEditStudentMobileTimeoutRef = useRef<number | null>(null);
+  const editStudentMobileHistoryActiveRef = useRef(false);
+  const editStudentMobileClosingFromPopRef = useRef(false);
+  const closeEditExerciseMobileTimeoutRef = useRef<number | null>(null);
+  const editExerciseMobileHistoryActiveRef = useRef(false);
+  const editExerciseMobileClosingFromPopRef = useRef(false);
+  const closeCreateExerciseMobileTimeoutRef = useRef<number | null>(null);
+  const createExerciseMobileHistoryActiveRef = useRef(false);
+  const createExerciseMobileClosingFromPopRef = useRef(false);
+  const closeCreateStudentMobileTimeoutRef = useRef<number | null>(null);
+  const createStudentMobileHistoryActiveRef = useRef(false);
+  const createStudentMobileClosingFromPopRef = useRef(false);
   const [rememberMe, setRememberMe] = useState<boolean>(() => localStorage.getItem("remember_me") !== "0");
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
@@ -837,6 +1077,7 @@ function App() {
   const [changePasswordLoading, setChangePasswordLoading] = useState(false);
   const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
   const [changePasswordSuccess, setChangePasswordSuccess] = useState<string | null>(null);
+  const changePasswordMobileHistoryActiveRef = useRef(false);
   const [adminUserModalOpen, setAdminUserModalOpen] = useState(false);
   const [adminUserUsername, setAdminUserUsername] = useState("");
   const [adminUserPassword, setAdminUserPassword] = useState("");
@@ -921,6 +1162,21 @@ function App() {
       cancelled = true;
     };
   }, [token]);
+
+  useEffect(() => () => {
+    if (closeEditStudentMobileTimeoutRef.current !== null) {
+      window.clearTimeout(closeEditStudentMobileTimeoutRef.current);
+    }
+    if (closeEditExerciseMobileTimeoutRef.current !== null) {
+      window.clearTimeout(closeEditExerciseMobileTimeoutRef.current);
+    }
+    if (closeCreateExerciseMobileTimeoutRef.current !== null) {
+      window.clearTimeout(closeCreateExerciseMobileTimeoutRef.current);
+    }
+    if (closeCreateStudentMobileTimeoutRef.current !== null) {
+      window.clearTimeout(closeCreateStudentMobileTimeoutRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     const hasToken = Boolean(token);
@@ -1085,8 +1341,51 @@ function App() {
     }
   };
 
-  const closeCreateExerciseModal = useCallback(() => {
-    setCreateModalOpen(false);
+  const resetEditExerciseForm = useCallback(() => {
+    setEditModalOpen(false);
+    setEditExercise(null);
+    setEditName("");
+    setEditRounds("");
+    setEditArrows("");
+    setEditDistance("");
+    setEditDescription("");
+    setEditError(null);
+    setEditLoading(false);
+  }, []);
+
+  const finishCloseEditExerciseMobileScreen = useCallback(() => {
+    setIsClosingEditExerciseMobileScreen(true);
+    if (closeEditExerciseMobileTimeoutRef.current !== null) {
+      window.clearTimeout(closeEditExerciseMobileTimeoutRef.current);
+    }
+    closeEditExerciseMobileTimeoutRef.current = window.setTimeout(() => {
+      setIsClosingEditExerciseMobileScreen(false);
+      resetEditExerciseForm();
+      editExerciseMobileClosingFromPopRef.current = false;
+      closeEditExerciseMobileTimeoutRef.current = null;
+    }, CREATE_STUDENT_MOBILE_ANIMATION_MS);
+  }, [resetEditExerciseForm]);
+
+  const closeEditExerciseModal = useCallback(() => {
+    if (!editModalOpen) {
+      resetEditExerciseForm();
+      return;
+    }
+    if (isDesktopViewport) {
+      setIsClosingEditExerciseMobileScreen(false);
+      editExerciseMobileHistoryActiveRef.current = false;
+      editExerciseMobileClosingFromPopRef.current = false;
+      resetEditExerciseForm();
+      return;
+    }
+    if (editExerciseMobileHistoryActiveRef.current && !editExerciseMobileClosingFromPopRef.current) {
+      window.history.back();
+      return;
+    }
+    finishCloseEditExerciseMobileScreen();
+  }, [editModalOpen, finishCloseEditExerciseMobileScreen, isDesktopViewport, resetEditExerciseForm]);
+
+  const resetCreateExerciseForm = useCallback(() => {
     setCreateName("");
     setCreateRounds("");
     setCreateArrows("");
@@ -1096,8 +1395,85 @@ function App() {
     setCreateLoading(false);
   }, []);
 
+  const finishCloseCreateExerciseMobileScreen = useCallback(() => {
+    setIsClosingCreateExerciseMobileScreen(true);
+    if (closeCreateExerciseMobileTimeoutRef.current !== null) {
+      window.clearTimeout(closeCreateExerciseMobileTimeoutRef.current);
+    }
+    closeCreateExerciseMobileTimeoutRef.current = window.setTimeout(() => {
+      setCreateModalOpen(false);
+      setIsClosingCreateExerciseMobileScreen(false);
+      resetCreateExerciseForm();
+      createExerciseMobileClosingFromPopRef.current = false;
+      closeCreateExerciseMobileTimeoutRef.current = null;
+    }, CREATE_STUDENT_MOBILE_ANIMATION_MS);
+  }, [resetCreateExerciseForm]);
+
+  const closeCreateExerciseModal = useCallback(() => {
+    if (!createModalOpen) {
+      resetCreateExerciseForm();
+      return;
+    }
+    if (isDesktopViewport) {
+      setCreateModalOpen(false);
+      setIsClosingCreateExerciseMobileScreen(false);
+      createExerciseMobileHistoryActiveRef.current = false;
+      createExerciseMobileClosingFromPopRef.current = false;
+      resetCreateExerciseForm();
+      return;
+    }
+    if (createExerciseMobileHistoryActiveRef.current && !createExerciseMobileClosingFromPopRef.current) {
+      window.history.back();
+      return;
+    }
+    finishCloseCreateExerciseMobileScreen();
+  }, [createModalOpen, finishCloseCreateExerciseMobileScreen, isDesktopViewport, resetCreateExerciseForm]);
+
+  const openCreateExerciseModal = useCallback(() => {
+    if (closeCreateExerciseMobileTimeoutRef.current !== null) {
+      window.clearTimeout(closeCreateExerciseMobileTimeoutRef.current);
+      closeCreateExerciseMobileTimeoutRef.current = null;
+    }
+    createExerciseMobileClosingFromPopRef.current = false;
+    setIsClosingCreateExerciseMobileScreen(false);
+    if (!isDesktopViewport && !createExerciseMobileHistoryActiveRef.current) {
+      window.history.pushState({ createExerciseMobile: true }, "", window.location.href);
+      createExerciseMobileHistoryActiveRef.current = true;
+    }
+    setCreateModalOpen(true);
+  }, [isDesktopViewport]);
+
+  const openEditExerciseModal = useCallback((exercise: Exercise) => {
+    if (closeEditExerciseMobileTimeoutRef.current !== null) {
+      window.clearTimeout(closeEditExerciseMobileTimeoutRef.current);
+      closeEditExerciseMobileTimeoutRef.current = null;
+    }
+    editExerciseMobileClosingFromPopRef.current = false;
+    setIsClosingEditExerciseMobileScreen(false);
+    setEditExercise(exercise);
+    setEditName(exercise.name);
+    setEditRounds(exercise.rounds ?? 1);
+    setEditArrows(exercise.arrows_per_round ?? exercise.arrows_count);
+    setEditDistance(exercise.distance_m);
+    setEditDescription(exercise.description || "");
+    setEditError(null);
+    if (!isDesktopViewport && !editExerciseMobileHistoryActiveRef.current) {
+      window.history.pushState({ editExerciseMobile: exercise.id }, "", window.location.href);
+      editExerciseMobileHistoryActiveRef.current = true;
+    }
+    setEditModalOpen(true);
+  }, [isDesktopViewport]);
+
   const handleCreateStudentSave = async () => {
     if (!token) return;
+    if (studentAccountUsername.trim().length < 3) {
+      setCreateStudentError("El usuario debe tener al menos 3 caracteres");
+      return;
+    }
+    if (studentAccountPassword.length < 8) {
+      setCreateStudentError("La contraseña debe tener al menos 8 caracteres");
+      return;
+    }
     setCreateStudentLoading(true);
     setCreateStudentError(null);
     try {
@@ -1111,15 +1487,12 @@ function App() {
           bow_pounds: studentBowPounds === "" ? null : Number(studentBowPounds),
           arrows_available: studentArrowsAvailable === "" ? null : Number(studentArrowsAvailable),
           is_active: true,
+          account_username: studentAccountUsername.trim(),
+          account_password: studentAccountPassword,
         }),
       });
       setStudents((prev) => [...prev, created]);
-      setCreateStudentModalOpen(false);
-      setStudentFullName("");
-      setStudentDocumentNumber("");
-      setStudentContact("");
-      setStudentBowPounds("");
-      setStudentArrowsAvailable("");
+      closeCreateStudentModal();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al crear deportista";
       setCreateStudentError(msg);
@@ -1128,7 +1501,679 @@ function App() {
     }
   };
 
+  const resetCreateStudentForm = useCallback(() => {
+    setStudentFullName("");
+    setStudentAccountUsername("");
+    setStudentAccountPassword("");
+    setStudentDocumentNumber("");
+    setStudentContact("");
+    setStudentBowPounds("");
+    setStudentArrowsAvailable("");
+    setCreateStudentError(null);
+    setCreateStudentLoading(false);
+  }, []);
+
+  const finishCloseCreateStudentMobileScreen = useCallback(() => {
+    setIsClosingCreateStudentMobileScreen(true);
+    if (closeCreateStudentMobileTimeoutRef.current !== null) {
+      window.clearTimeout(closeCreateStudentMobileTimeoutRef.current);
+    }
+    closeCreateStudentMobileTimeoutRef.current = window.setTimeout(() => {
+      setCreateStudentModalOpen(false);
+      setIsClosingCreateStudentMobileScreen(false);
+      resetCreateStudentForm();
+      createStudentMobileClosingFromPopRef.current = false;
+      closeCreateStudentMobileTimeoutRef.current = null;
+    }, CREATE_STUDENT_MOBILE_ANIMATION_MS);
+  }, [resetCreateStudentForm]);
+
+  const closeCreateStudentModal = useCallback(() => {
+    if (!createStudentModalOpen) {
+      resetCreateStudentForm();
+      return;
+    }
+    if (isDesktopViewport) {
+      setCreateStudentModalOpen(false);
+      setIsClosingCreateStudentMobileScreen(false);
+      createStudentMobileHistoryActiveRef.current = false;
+      createStudentMobileClosingFromPopRef.current = false;
+      resetCreateStudentForm();
+      return;
+    }
+    if (createStudentMobileHistoryActiveRef.current && !createStudentMobileClosingFromPopRef.current) {
+      window.history.back();
+      return;
+    }
+    finishCloseCreateStudentMobileScreen();
+  }, [createStudentModalOpen, finishCloseCreateStudentMobileScreen, isDesktopViewport, resetCreateStudentForm]);
+
+  const openCreateStudentModal = useCallback(() => {
+    if (closeCreateStudentMobileTimeoutRef.current !== null) {
+      window.clearTimeout(closeCreateStudentMobileTimeoutRef.current);
+      closeCreateStudentMobileTimeoutRef.current = null;
+    }
+    createStudentMobileClosingFromPopRef.current = false;
+    setIsClosingCreateStudentMobileScreen(false);
+    if (!isDesktopViewport && !createStudentMobileHistoryActiveRef.current) {
+      window.history.pushState({ createStudentMobile: true }, "", window.location.href);
+      createStudentMobileHistoryActiveRef.current = true;
+    }
+    setCreateStudentModalOpen(true);
+  }, [isDesktopViewport]);
+
+  const resetEditStudentForm = useCallback(() => {
+    setEditStudentModalOpen(false);
+    setEditStudentTarget(null);
+    setEditStudentFullName("");
+    setEditStudentDocumentNumber("");
+    setEditStudentContact("");
+    setEditStudentBowPounds("");
+    setEditStudentArrowsAvailable("");
+    setEditStudentError(null);
+    setEditStudentLoading(false);
+  }, []);
+
+  const finishCloseEditStudentMobileScreen = useCallback(() => {
+    setIsClosingEditStudentMobileScreen(true);
+    if (closeEditStudentMobileTimeoutRef.current !== null) {
+      window.clearTimeout(closeEditStudentMobileTimeoutRef.current);
+    }
+    closeEditStudentMobileTimeoutRef.current = window.setTimeout(() => {
+      setIsClosingEditStudentMobileScreen(false);
+      resetEditStudentForm();
+      editStudentMobileClosingFromPopRef.current = false;
+      closeEditStudentMobileTimeoutRef.current = null;
+    }, CREATE_STUDENT_MOBILE_ANIMATION_MS);
+  }, [resetEditStudentForm]);
+
+  const closeEditStudentModal = useCallback(() => {
+    if (!editStudentModalOpen) {
+      resetEditStudentForm();
+      return;
+    }
+    if (isDesktopViewport) {
+      setIsClosingEditStudentMobileScreen(false);
+      editStudentMobileHistoryActiveRef.current = false;
+      editStudentMobileClosingFromPopRef.current = false;
+      resetEditStudentForm();
+      return;
+    }
+    if (editStudentMobileHistoryActiveRef.current && !editStudentMobileClosingFromPopRef.current) {
+      window.history.back();
+      return;
+    }
+    finishCloseEditStudentMobileScreen();
+  }, [editStudentModalOpen, finishCloseEditStudentMobileScreen, isDesktopViewport, resetEditStudentForm]);
+
+  useEffect(() => {
+    if (!createModalOpen || isDesktopViewport) return;
+    const handlePopState = () => {
+      if (!createExerciseMobileHistoryActiveRef.current) return;
+      createExerciseMobileHistoryActiveRef.current = false;
+      createExerciseMobileClosingFromPopRef.current = true;
+      finishCloseCreateExerciseMobileScreen();
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [createModalOpen, finishCloseCreateExerciseMobileScreen, isDesktopViewport]);
+
+  useEffect(() => {
+    if (!editModalOpen || isDesktopViewport) return;
+    const handlePopState = () => {
+      if (!editExerciseMobileHistoryActiveRef.current) return;
+      editExerciseMobileHistoryActiveRef.current = false;
+      editExerciseMobileClosingFromPopRef.current = true;
+      finishCloseEditExerciseMobileScreen();
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [editModalOpen, finishCloseEditExerciseMobileScreen, isDesktopViewport]);
+
+  useEffect(() => {
+    if (!editStudentModalOpen || isDesktopViewport) return;
+    const handlePopState = () => {
+      if (!editStudentMobileHistoryActiveRef.current) return;
+      editStudentMobileHistoryActiveRef.current = false;
+      editStudentMobileClosingFromPopRef.current = true;
+      finishCloseEditStudentMobileScreen();
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [editStudentModalOpen, finishCloseEditStudentMobileScreen, isDesktopViewport]);
+
+  useEffect(() => {
+    if (!studentHistoryModalOpen || isDesktopViewport) return;
+    const handlePopState = () => {
+      if (!studentHistoryMobileHistoryActiveRef.current) return;
+      studentHistoryMobileHistoryActiveRef.current = false;
+      setStudentHistoryModalOpen(false);
+      setStudentHistoryTarget(null);
+      setStudentHistorySearch("");
+      setStudentHistoryError(null);
+      setStudentHistoryItems([]);
+      setExpandedHistoryId(null);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [isDesktopViewport, studentHistoryModalOpen]);
+
+  useEffect(() => {
+    if (!changePasswordModalOpen || isDesktopViewport) return;
+    const handlePopState = () => {
+      if (!changePasswordMobileHistoryActiveRef.current) return;
+      changePasswordMobileHistoryActiveRef.current = false;
+      setChangePasswordModalOpen(false);
+      setChangePasswordError(null);
+      setChangePasswordCurrent("");
+      setChangePasswordNext("");
+      setChangePasswordConfirm("");
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [changePasswordModalOpen, isDesktopViewport]);
+
+  useEffect(() => {
+    if (!createStudentModalOpen || isDesktopViewport) return;
+    const handlePopState = () => {
+      if (!createStudentMobileHistoryActiveRef.current) return;
+      createStudentMobileHistoryActiveRef.current = false;
+      createStudentMobileClosingFromPopRef.current = true;
+      finishCloseCreateStudentMobileScreen();
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [createStudentModalOpen, finishCloseCreateStudentMobileScreen, isDesktopViewport]);
+
+  const createStudentCanSave =
+    !createStudentLoading &&
+    Boolean(studentAccountUsername) &&
+    Boolean(studentAccountPassword) &&
+    Boolean(studentFullName) &&
+    Boolean(studentDocumentNumber);
+
+  const editStudentCanSave =
+    !editStudentLoading &&
+    Boolean(editStudentFullName) &&
+    Boolean(editStudentDocumentNumber);
+
+  const createExerciseCanSave =
+    !createLoading &&
+    Boolean(createName) &&
+    createRounds !== "" &&
+    createArrows !== "" &&
+    createDistance !== "";
+
+  const editExerciseCanSave =
+    !editLoading &&
+    Boolean(editName) &&
+    editRounds !== "" &&
+    editArrows !== "" &&
+    editDistance !== "";
+
+  const createExerciseFormFields = (
+    <Stack spacing={4}>
+      <Box bg="white" borderWidth="1px" borderColor="#e5e7eb" borderRadius="16px" px={{ base: 4, md: 0 }} py={{ base: 4, md: 0 }} boxShadow={{ base: "0 10px 24px rgba(15, 23, 42, 0.04)", md: "none" }}>
+        <Stack spacing={4}>
+          <Stack spacing={1}>
+            <Text fontSize="13px" fontWeight="800" color="#1f2937">Datos del ejercicio</Text>
+            <Text fontSize="11px" color="#667085">Configura nombre, volumen y distancia del nuevo ejercicio.</Text>
+          </Stack>
+          <FormControl>
+            <FormLabel color="gray.700" fontSize="sm">Nombre</FormLabel>
+            <Input
+              value={createName}
+              onChange={(e) => setCreateName(e.target.value)}
+              borderColor="gray.300"
+              borderRadius="8px"
+              _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+            />
+          </FormControl>
+          <SimpleGrid columns={{ base: 1, sm: 3 }} spacing={3}>
+            <FormControl>
+              <FormLabel color="gray.700" fontSize="sm">Rondas</FormLabel>
+              <Input
+                type="number"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                min={1}
+                step={1}
+                value={createRounds}
+                onChange={(e) => setCreateRounds(normalizeInt(e.target.value))}
+                onKeyDown={(e) => blockInvalidKeys(e, false)}
+                onBeforeInput={handleBeforeInputInt}
+                onPaste={handlePasteInt}
+                borderColor="gray.300"
+                borderRadius="8px"
+                _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+              />
+            </FormControl>
+            <FormControl>
+              <FormLabel color="gray.700" fontSize="sm">Flechas por ronda</FormLabel>
+              <Input
+                type="number"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                min={0}
+                step={1}
+                value={createArrows}
+                onChange={(e) => setCreateArrows(normalizeInt(e.target.value))}
+                onKeyDown={(e) => blockInvalidKeys(e, false)}
+                onBeforeInput={handleBeforeInputInt}
+                onPaste={handlePasteInt}
+                borderColor="gray.300"
+                borderRadius="8px"
+                _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+              />
+            </FormControl>
+            <FormControl>
+              <FormLabel color="gray.700" fontSize="sm">Distancia (m)</FormLabel>
+              <Input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step={0.5}
+                value={createDistance}
+                onChange={(e) => setCreateDistance(normalizeFloat(e.target.value))}
+                onKeyDown={(e) => blockInvalidKeys(e, true)}
+                onBeforeInput={handleBeforeInputFloat}
+                onPaste={handlePasteFloat}
+                borderColor="gray.300"
+                borderRadius="8px"
+                _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+              />
+            </FormControl>
+          </SimpleGrid>
+          <FormControl>
+            <FormLabel color="gray.700" fontSize="sm">Descripción</FormLabel>
+            <Textarea
+              value={createDescription}
+              onChange={(e) => setCreateDescription(e.target.value)}
+              placeholder="Escribe los detalles del ejercicio..."
+              minH="120px"
+              resize="vertical"
+              borderColor="gray.300"
+              borderRadius="8px"
+              _hover={{ borderColor: "gray.500" }}
+              _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+              fontSize="md"
+            />
+          </FormControl>
+        </Stack>
+      </Box>
+      {createError && (
+        <Alert status="error" borderRadius="md">
+          <AlertIcon />
+          {createError}
+        </Alert>
+      )}
+    </Stack>
+  );
+
+  const editExerciseFormFields = (
+    <Stack spacing={4}>
+      <Box bg="white" borderWidth="1px" borderColor="#e5e7eb" borderRadius="16px" px={{ base: 4, md: 0 }} py={{ base: 4, md: 0 }} boxShadow={{ base: "0 10px 24px rgba(15, 23, 42, 0.04)", md: "none" }}>
+        <Stack spacing={4}>
+          <Stack spacing={1}>
+            <Text fontSize="13px" fontWeight="800" color="#1f2937">Datos del ejercicio</Text>
+            <Text fontSize="11px" color="#667085">Actualiza nombre, volumen y distancia del ejercicio.</Text>
+          </Stack>
+          <FormControl>
+            <FormLabel color="gray.700" fontSize="sm">Nombre</FormLabel>
+            <Input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              borderColor="gray.300"
+              borderRadius="8px"
+              _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+            />
+          </FormControl>
+          <SimpleGrid columns={{ base: 1, sm: 3 }} spacing={3}>
+            <FormControl>
+              <FormLabel color="gray.700" fontSize="sm">Rondas</FormLabel>
+              <Input
+                type="number"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                min={1}
+                step={1}
+                value={editRounds}
+                onChange={(e) => setEditRounds(normalizeInt(e.target.value))}
+                onKeyDown={(e) => blockInvalidKeys(e, false)}
+                onBeforeInput={handleBeforeInputInt}
+                onPaste={handlePasteInt}
+                borderColor="gray.300"
+                borderRadius="8px"
+                _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+              />
+            </FormControl>
+            <FormControl>
+              <FormLabel color="gray.700" fontSize="sm">Flechas por ronda</FormLabel>
+              <Input
+                type="number"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                min={0}
+                step={1}
+                value={editArrows}
+                onChange={(e) => setEditArrows(normalizeInt(e.target.value))}
+                onKeyDown={(e) => blockInvalidKeys(e, false)}
+                onBeforeInput={handleBeforeInputInt}
+                onPaste={handlePasteInt}
+                borderColor="gray.300"
+                borderRadius="8px"
+                _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+              />
+            </FormControl>
+            <FormControl>
+              <FormLabel color="gray.700" fontSize="sm">Distancia (m)</FormLabel>
+              <Input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step={0.5}
+                value={editDistance}
+                onChange={(e) => setEditDistance(normalizeFloat(e.target.value))}
+                onKeyDown={(e) => blockInvalidKeys(e, true)}
+                onBeforeInput={handleBeforeInputFloat}
+                onPaste={handlePasteFloat}
+                borderColor="gray.300"
+                borderRadius="8px"
+                _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+              />
+            </FormControl>
+          </SimpleGrid>
+          <FormControl>
+            <FormLabel color="gray.700" fontSize="sm">Descripción</FormLabel>
+            <Textarea
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+              minH="120px"
+              resize="vertical"
+              borderColor="gray.300"
+              _hover={{ borderColor: "gray.500" }}
+              _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+              fontSize="md"
+            />
+          </FormControl>
+        </Stack>
+      </Box>
+      {editError && (
+        <Alert status="error" borderRadius="md">
+          <AlertIcon />
+          {editError}
+        </Alert>
+      )}
+    </Stack>
+  );
+
+  const createStudentFormFields = (
+    <Stack spacing={4}>
+      <Box bg="white" borderWidth="1px" borderColor="#e5e7eb" borderRadius="16px" px={{ base: 4, md: 0 }} py={{ base: 4, md: 0 }} boxShadow={{ base: "0 10px 24px rgba(15, 23, 42, 0.04)", md: "none" }}>
+        <Stack spacing={4}>
+          <Box position="absolute" left="-9999px" top="auto" w="1px" h="1px" overflow="hidden" aria-hidden="true">
+            <Input
+              tabIndex={-1}
+              name="fake-login-username"
+              autoComplete="username"
+              value=""
+              readOnly
+            />
+            <Input
+              tabIndex={-1}
+              type="password"
+              name="fake-login-password"
+              autoComplete="current-password"
+              value=""
+              readOnly
+            />
+          </Box>
+          <Stack spacing={1}>
+            <Text fontSize="13px" fontWeight="800" color="#1f2937">Cuenta del deportista</Text>
+            <Text fontSize="11px" color="#667085">Define el usuario y la contraseña inicial para el acceso del alumno.</Text>
+          </Stack>
+          <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+            <FormControl isRequired>
+              <FormLabel color="gray.700" fontSize="sm">Usuario</FormLabel>
+              <Input
+                value={studentAccountUsername}
+                onChange={(e) => {
+                  setStudentAccountUsername(e.target.value);
+                  if (createStudentError) setCreateStudentError(null);
+                }}
+                name="student-account-access"
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                data-lpignore="true"
+                data-1p-ignore
+                data-bwignore="true"
+                placeholder="Nombre de usuario"
+                borderColor="gray.300"
+                borderRadius="8px"
+                _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+              />
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel color="gray.700" fontSize="sm">Contraseña inicial</FormLabel>
+              <PasswordInput
+                value={studentAccountPassword}
+                onChange={(e) => {
+                  setStudentAccountPassword(e.target.value);
+                  if (createStudentError) setCreateStudentError(null);
+                }}
+                name="student-account-secret"
+                autoComplete="new-password"
+                data-lpignore="true"
+                data-1p-ignore
+                data-bwignore="true"
+                placeholder="Mínimo 8 caracteres"
+                borderColor="gray.300"
+                borderRadius="8px"
+                _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+              />
+            </FormControl>
+          </SimpleGrid>
+        </Stack>
+      </Box>
+
+      <Box bg="white" borderWidth="1px" borderColor="#e5e7eb" borderRadius="16px" px={{ base: 4, md: 0 }} py={{ base: 4, md: 0 }} boxShadow={{ base: "0 10px 24px rgba(15, 23, 42, 0.04)", md: "none" }}>
+        <Stack spacing={4}>
+          <Stack spacing={1}>
+            <Text fontSize="13px" fontWeight="800" color="#1f2937">Datos del deportista</Text>
+            <Text fontSize="11px" color="#667085">Completa la ficha para que aparezca en la lista y pueda recibir rutinas.</Text>
+          </Stack>
+          <FormControl isRequired>
+            <FormLabel color="gray.700" fontSize="sm">Nombre completo</FormLabel>
+            <Input
+              value={studentFullName}
+              onChange={(e) => setStudentFullName(e.target.value)}
+              placeholder="Ej. Juan Pérez"
+              borderColor="gray.300"
+              borderRadius="8px"
+              _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+            />
+          </FormControl>
+          <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+            <FormControl isRequired>
+              <FormLabel color="gray.700" fontSize="sm">DNI</FormLabel>
+              <Input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={studentDocumentNumber}
+                onChange={(e) => setStudentDocumentNumber(e.target.value.replace(/\D+/g, ""))}
+                onBeforeInput={handleBeforeInputInt}
+                onPaste={handlePasteInt}
+                placeholder="12345678"
+                borderColor="gray.300"
+                borderRadius="8px"
+                _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+              />
+            </FormControl>
+            <FormControl>
+              <FormLabel color="gray.700" fontSize="sm">Contacto</FormLabel>
+              <Input
+                value={studentContact}
+                onChange={(e) => setStudentContact(e.target.value)}
+                placeholder="correo@ejemplo.com"
+                borderColor="gray.300"
+                borderRadius="8px"
+                _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+              />
+            </FormControl>
+          </SimpleGrid>
+          <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+            <FormControl>
+              <FormLabel color="gray.700" fontSize="sm">Libras del arco</FormLabel>
+              <Input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step={0.5}
+                value={studentBowPounds}
+                onChange={(e) => setStudentBowPounds(normalizeFloat(e.target.value))}
+                onKeyDown={(e) => blockInvalidKeys(e, true)}
+                onBeforeInput={handleBeforeInputFloat}
+                onPaste={handlePasteFloat}
+                placeholder="Ej. 24"
+                borderColor="gray.300"
+                borderRadius="8px"
+                _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+              />
+            </FormControl>
+            <FormControl>
+              <FormLabel color="gray.700" fontSize="sm">Flechas disponibles</FormLabel>
+              <Input
+                type="number"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                min={0}
+                step={1}
+                value={studentArrowsAvailable}
+                onChange={(e) => setStudentArrowsAvailable(normalizeInt(e.target.value))}
+                onKeyDown={(e) => blockInvalidKeys(e, false)}
+                onBeforeInput={handleBeforeInputInt}
+                onPaste={handlePasteInt}
+                placeholder="Ej. 6"
+                borderColor="gray.300"
+                borderRadius="8px"
+                _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+              />
+            </FormControl>
+          </SimpleGrid>
+        </Stack>
+      </Box>
+
+      {createStudentError && (
+        <Alert status="error" borderRadius="md">
+          <AlertIcon />
+          {createStudentError}
+        </Alert>
+      )}
+    </Stack>
+  );
+
+  const editStudentFormFields = (
+    <Stack spacing={4}>
+      <Box bg="white" borderWidth="1px" borderColor="#e5e7eb" borderRadius="16px" px={{ base: 4, md: 0 }} py={{ base: 4, md: 0 }} boxShadow={{ base: "0 10px 24px rgba(15, 23, 42, 0.04)", md: "none" }}>
+        <Stack spacing={4}>
+          <Stack spacing={1}>
+            <Text fontSize="13px" fontWeight="800" color="#1f2937">Datos del deportista</Text>
+            <Text fontSize="11px" color="#667085">Actualiza la información personal y técnica del deportista.</Text>
+          </Stack>
+          <FormControl>
+            <FormLabel color="gray.700" fontSize="sm">Nombre completo</FormLabel>
+            <Input
+              value={editStudentFullName}
+              onChange={(e) => setEditStudentFullName(e.target.value)}
+              borderColor="gray.300"
+              borderRadius="8px"
+              _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+            />
+          </FormControl>
+          <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+            <FormControl>
+              <FormLabel color="gray.700" fontSize="sm">DNI</FormLabel>
+              <Input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={editStudentDocumentNumber}
+                onChange={(e) => setEditStudentDocumentNumber(e.target.value.replace(/\D+/g, ""))}
+                onBeforeInput={handleBeforeInputInt}
+                onPaste={handlePasteInt}
+                borderColor="gray.300"
+                borderRadius="8px"
+                _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+              />
+            </FormControl>
+            <FormControl>
+              <FormLabel color="gray.700" fontSize="sm">Contacto</FormLabel>
+              <Input
+                value={editStudentContact}
+                onChange={(e) => setEditStudentContact(e.target.value)}
+                borderColor="gray.300"
+                borderRadius="8px"
+                _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+              />
+            </FormControl>
+          </SimpleGrid>
+          <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+            <FormControl>
+              <FormLabel color="gray.700" fontSize="sm">Libras del arco</FormLabel>
+              <Input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step={0.5}
+                value={editStudentBowPounds}
+                onChange={(e) => setEditStudentBowPounds(normalizeFloat(e.target.value))}
+                onKeyDown={(e) => blockInvalidKeys(e, true)}
+                onBeforeInput={handleBeforeInputFloat}
+                onPaste={handlePasteFloat}
+                borderColor="gray.300"
+                borderRadius="8px"
+                _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+              />
+            </FormControl>
+            <FormControl>
+              <FormLabel color="gray.700" fontSize="sm">Flechas disponibles</FormLabel>
+              <Input
+                type="number"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                min={0}
+                step={1}
+                value={editStudentArrowsAvailable}
+                onChange={(e) => setEditStudentArrowsAvailable(normalizeInt(e.target.value))}
+                onKeyDown={(e) => blockInvalidKeys(e, false)}
+                onBeforeInput={handleBeforeInputInt}
+                onPaste={handlePasteInt}
+                borderColor="gray.300"
+                borderRadius="8px"
+                _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+              />
+            </FormControl>
+          </SimpleGrid>
+        </Stack>
+      </Box>
+      {editStudentError && (
+        <Alert status="error" borderRadius="md">
+          <AlertIcon />
+          {editStudentError}
+        </Alert>
+      )}
+    </Stack>
+  );
+
   const openEditStudentModal = useCallback((student: Student) => {
+    if (closeEditStudentMobileTimeoutRef.current !== null) {
+      window.clearTimeout(closeEditStudentMobileTimeoutRef.current);
+      closeEditStudentMobileTimeoutRef.current = null;
+    }
+    editStudentMobileClosingFromPopRef.current = false;
+    setIsClosingEditStudentMobileScreen(false);
     setEditStudentTarget(student);
     setEditStudentFullName(student.full_name);
     setEditStudentDocumentNumber(student.document_number);
@@ -1136,8 +2181,12 @@ function App() {
     setEditStudentBowPounds(student.bow_pounds ?? "");
     setEditStudentArrowsAvailable(student.arrows_available ?? "");
     setEditStudentError(null);
+    if (!isDesktopViewport && !editStudentMobileHistoryActiveRef.current) {
+      window.history.pushState({ editStudentMobile: student.id }, "", window.location.href);
+      editStudentMobileHistoryActiveRef.current = true;
+    }
     setEditStudentModalOpen(true);
-  }, []);
+  }, [isDesktopViewport]);
 
   const handleEditStudentSave = async () => {
     if (!token || !editStudentTarget) return;
@@ -1243,6 +2292,14 @@ function App() {
   const recentUserChanges = useMemo(() => usersSortedByUpdated.slice(0, 5), [usersSortedByUpdated]);
   const recentUsers = useMemo(() => usersSortedByCreated.slice(0, 5), [usersSortedByCreated]);
   const lastUserUpdate = usersSortedByUpdated[0] ?? null;
+  const mobileSectionTitle = useMemo(() => {
+    if (profSection === "inicio") return "Inicio";
+    if (profSection === "rutina") return "Rutinas";
+    if (profSection === "ejercicio") return "Ejercicios";
+    if (profSection === "alumno") return "Deportistas";
+    if (profSection === "perfil") return "Perfil";
+    return "Rutinas en curso";
+  }, [profSection]);
   const filteredStudentHistoryItems = useMemo(() => {
     const term = studentHistorySearch.trim().toLowerCase();
     if (!term) return studentHistoryItems;
@@ -1617,21 +2674,31 @@ function App() {
   }, [clearClientSession, token]);
 
   const openChangePasswordModal = useCallback(() => {
+    if (!isDesktopViewport && !changePasswordMobileHistoryActiveRef.current) {
+      window.history.pushState({ changePasswordMobile: true }, "", window.location.href);
+      changePasswordMobileHistoryActiveRef.current = true;
+    }
     setChangePasswordError(null);
     setChangePasswordSuccess(null);
     setChangePasswordCurrent("");
     setChangePasswordNext("");
     setChangePasswordConfirm("");
     setChangePasswordModalOpen(true);
-  }, []);
+  }, [isDesktopViewport]);
 
   const closeChangePasswordModal = useCallback(() => {
+    if (!changePasswordModalOpen) return;
+    if (!isDesktopViewport && changePasswordMobileHistoryActiveRef.current) {
+      window.history.back();
+      return;
+    }
     setChangePasswordModalOpen(false);
     setChangePasswordError(null);
     setChangePasswordCurrent("");
     setChangePasswordNext("");
     setChangePasswordConfirm("");
-  }, []);
+    changePasswordMobileHistoryActiveRef.current = false;
+  }, [changePasswordModalOpen, isDesktopViewport]);
 
   const handleChangePassword = useCallback(async () => {
     if (!token) return;
@@ -1952,9 +3019,25 @@ function App() {
   };
 
   const openRoutineCreateAddExercise = (dayKey: string) => {
+    if (!isDesktopViewport && !routineCreateAddExerciseMobileHistoryActiveRef.current) {
+      window.history.pushState({ routineCreateAddExerciseMobile: true }, "", window.location.href);
+      routineCreateAddExerciseMobileHistoryActiveRef.current = true;
+    }
     setRoutineCreateAddExerciseDayKey(dayKey);
     setRoutineCreateAddExerciseSearch("");
     setRoutineCreateAddExerciseModalOpen(true);
+  };
+
+  const closeRoutineCreateAddExerciseModal = () => {
+    if (!routineCreateAddExerciseModalOpen) return;
+    if (!isDesktopViewport && routineCreateAddExerciseMobileHistoryActiveRef.current) {
+      window.history.back();
+      return;
+    }
+    setRoutineCreateAddExerciseModalOpen(false);
+    setRoutineCreateAddExerciseDayKey(null);
+    setRoutineCreateAddExerciseSearch("");
+    routineCreateAddExerciseMobileHistoryActiveRef.current = false;
   };
 
   const addExerciseToRoutineSummaryDay = (dayKey: string, exerciseId: number) => {
@@ -1965,6 +3048,7 @@ function App() {
     setRoutineCreateAddExerciseModalOpen(false);
     setRoutineCreateAddExerciseDayKey(null);
     setRoutineCreateAddExerciseSearch("");
+    routineCreateAddExerciseMobileHistoryActiveRef.current = false;
   };
 
   const handleAddRoutineDay = () => {
@@ -2036,7 +3120,26 @@ function App() {
     setRoutineCreateEditArrows(derived.arrowsPerRound);
     setRoutineCreateEditDistance(override?.distance_override_m ?? Number(base?.distance_m ?? 0) ?? "");
     setRoutineCreateEditDescription(override?.description_override ?? base?.description ?? "");
+    if (!isDesktopViewport && !routineCreateEditExerciseMobileHistoryActiveRef.current) {
+      window.history.pushState({ routineCreateEditExerciseMobile: true }, "", window.location.href);
+      routineCreateEditExerciseMobileHistoryActiveRef.current = true;
+    }
     setRoutineCreateEditExerciseModalOpen(true);
+  };
+
+  const closeRoutineCreateEditExercise = () => {
+    if (!routineCreateEditExerciseModalOpen) return;
+    if (!isDesktopViewport && routineCreateEditExerciseMobileHistoryActiveRef.current) {
+      window.history.back();
+      return;
+    }
+    setRoutineCreateEditExerciseModalOpen(false);
+    setRoutineCreateEditTarget(null);
+    setRoutineCreateEditRounds("");
+    setRoutineCreateEditArrows("");
+    setRoutineCreateEditDistance("");
+    setRoutineCreateEditDescription("");
+    routineCreateEditExerciseMobileHistoryActiveRef.current = false;
   };
 
   const saveRoutineCreateEditExercise = () => {
@@ -2059,7 +3162,37 @@ function App() {
     setRoutineCreateEditArrows("");
     setRoutineCreateEditDistance("");
     setRoutineCreateEditDescription("");
+    routineCreateEditExerciseMobileHistoryActiveRef.current = false;
   };
+
+  useEffect(() => {
+    if (!routineCreateAddExerciseModalOpen || isDesktopViewport) return;
+    const handlePopState = () => {
+      if (!routineCreateAddExerciseMobileHistoryActiveRef.current) return;
+      routineCreateAddExerciseMobileHistoryActiveRef.current = false;
+      setRoutineCreateAddExerciseModalOpen(false);
+      setRoutineCreateAddExerciseDayKey(null);
+      setRoutineCreateAddExerciseSearch("");
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [isDesktopViewport, routineCreateAddExerciseModalOpen]);
+
+  useEffect(() => {
+    if (!routineCreateEditExerciseModalOpen || isDesktopViewport) return;
+    const handlePopState = () => {
+      if (!routineCreateEditExerciseMobileHistoryActiveRef.current) return;
+      routineCreateEditExerciseMobileHistoryActiveRef.current = false;
+      setRoutineCreateEditExerciseModalOpen(false);
+      setRoutineCreateEditTarget(null);
+      setRoutineCreateEditRounds("");
+      setRoutineCreateEditArrows("");
+      setRoutineCreateEditDistance("");
+      setRoutineCreateEditDescription("");
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [isDesktopViewport, routineCreateEditExerciseModalOpen]);
 
   const removeExerciseFromRoutineSummaryDay = (dayKey: string, itemIndex: number) => {
     setRoutineExercisesByDay((prev) => {
@@ -2393,13 +3526,48 @@ function App() {
     setEditAssignArrows(derived.arrowsPerRound);
     setEditAssignDistance(override?.distance_override_m ?? Number(base?.distance_m ?? 0) ?? "");
     setEditAssignDescription(override?.description_override ?? base?.description ?? "");
+    if (!isDesktopViewport && !editAssignExerciseMobileHistoryActiveRef.current) {
+      window.history.pushState({ editAssignExerciseMobile: true }, "", window.location.href);
+      editAssignExerciseMobileHistoryActiveRef.current = true;
+    }
     setEditAssignExerciseModalOpen(true);
   };
 
+  const closeEditAssignExerciseModal = () => {
+    if (!editAssignExerciseModalOpen) return;
+    if (!isDesktopViewport && editAssignExerciseMobileHistoryActiveRef.current) {
+      window.history.back();
+      return;
+    }
+    setEditAssignExerciseModalOpen(false);
+    setEditAssignExerciseTarget(null);
+    setEditAssignRounds("");
+    setEditAssignArrows("");
+    setEditAssignDistance("");
+    setEditAssignDescription("");
+    editAssignExerciseMobileHistoryActiveRef.current = false;
+  };
+
   const openAddExerciseForDay = (dayKey: string) => {
+    if (!isDesktopViewport && !addExerciseDayMobileHistoryActiveRef.current) {
+      window.history.pushState({ addExerciseDayMobile: true }, "", window.location.href);
+      addExerciseDayMobileHistoryActiveRef.current = true;
+    }
     setAddExerciseTargetDayKey(dayKey);
     setAddExerciseSearch("");
     setAddExerciseDayModalOpen(true);
+  };
+
+  const closeAddExerciseDayModal = () => {
+    if (!addExerciseDayModalOpen) return;
+    if (!isDesktopViewport && addExerciseDayMobileHistoryActiveRef.current) {
+      window.history.back();
+      return;
+    }
+    setAddExerciseDayModalOpen(false);
+    setAddExerciseTargetDayKey(null);
+    setAddExerciseSearch("");
+    addExerciseDayMobileHistoryActiveRef.current = false;
   };
 
   const addTemporaryExerciseToDay = (dayKey: string, exerciseId: number) => {
@@ -2410,6 +3578,7 @@ function App() {
     setAddExerciseDayModalOpen(false);
     setAddExerciseTargetDayKey(null);
     setAddExerciseSearch("");
+    addExerciseDayMobileHistoryActiveRef.current = false;
   };
 
   const handleAddExerciseListWheel = (e: React.WheelEvent<HTMLDivElement>) => {
@@ -2440,7 +3609,37 @@ function App() {
     setEditAssignArrows("");
     setEditAssignDistance("");
     setEditAssignDescription("");
+    editAssignExerciseMobileHistoryActiveRef.current = false;
   };
+
+  useEffect(() => {
+    if (!addExerciseDayModalOpen || isDesktopViewport) return;
+    const handlePopState = () => {
+      if (!addExerciseDayMobileHistoryActiveRef.current) return;
+      addExerciseDayMobileHistoryActiveRef.current = false;
+      setAddExerciseDayModalOpen(false);
+      setAddExerciseTargetDayKey(null);
+      setAddExerciseSearch("");
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [addExerciseDayModalOpen, isDesktopViewport]);
+
+  useEffect(() => {
+    if (!editAssignExerciseModalOpen || isDesktopViewport) return;
+    const handlePopState = () => {
+      if (!editAssignExerciseMobileHistoryActiveRef.current) return;
+      editAssignExerciseMobileHistoryActiveRef.current = false;
+      setEditAssignExerciseModalOpen(false);
+      setEditAssignExerciseTarget(null);
+      setEditAssignRounds("");
+      setEditAssignArrows("");
+      setEditAssignDistance("");
+      setEditAssignDescription("");
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [editAssignExerciseModalOpen, isDesktopViewport]);
 
   const addAssignRoutineDay = () => {
     if (routineAssignDayCount >= routineAssignDayInitialLimit) return;
@@ -2674,6 +3873,10 @@ function App() {
 
   const openStudentHistoryModal = useCallback(async (student: Student) => {
     if (!token) return;
+    if (!isDesktopViewport && !studentHistoryMobileHistoryActiveRef.current) {
+      window.history.pushState({ studentHistoryMobile: student.id }, "", window.location.href);
+      studentHistoryMobileHistoryActiveRef.current = true;
+    }
     setStudentHistoryTarget(student);
     setStudentHistorySearch("");
     setStudentHistoryError(null);
@@ -2693,11 +3896,64 @@ function App() {
     } finally {
       setStudentHistoryLoading(false);
     }
-  }, [token]);
+  }, [isDesktopViewport, token]);
+
+  const closeStudentHistoryModal = useCallback(() => {
+    if (!studentHistoryModalOpen) return;
+    if (!isDesktopViewport && studentHistoryMobileHistoryActiveRef.current) {
+      window.history.back();
+      return;
+    }
+    setStudentHistoryModalOpen(false);
+    setStudentHistoryTarget(null);
+    setStudentHistorySearch("");
+    setStudentHistoryError(null);
+    setStudentHistoryItems([]);
+    setExpandedHistoryId(null);
+    studentHistoryMobileHistoryActiveRef.current = false;
+  }, [isDesktopViewport, studentHistoryModalOpen]);
+
+  const downloadPdfBlob = useCallback((blob: Blob, filename: string) => {
+    const blobUrl = window.URL.createObjectURL(blob);
+    const navigatorWithSave = window.navigator as Navigator & {
+      msSaveOrOpenBlob?: (blob: Blob, defaultName?: string) => boolean;
+    };
+
+    if (typeof navigatorWithSave.msSaveOrOpenBlob === "function") {
+      navigatorWithSave.msSaveOrOpenBlob(blob, filename);
+      window.URL.revokeObjectURL(blobUrl);
+      return;
+    }
+
+    const anchor = document.createElement("a");
+    anchor.href = blobUrl;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.URL.revokeObjectURL(blobUrl);
+  }, []);
 
   const handleExportAssignmentPdf = useCallback(async (assignmentId: number) => {
     if (!token) return;
     setExportAssignmentLoadingId(assignmentId);
+    setExportAssignmentError(null);
+    const userAgent = window.navigator.userAgent || "";
+    const isMobileDevice = /android|iphone|ipad|mobile/i.test(userAgent);
+
+    if (isMobileDevice) {
+      try {
+        const downloadUrl = `${API_BASE}/assignments/${assignmentId}/pdf-download?access_token=${encodeURIComponent(token)}`;
+        window.location.assign(downloadUrl);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "No se pudo generar el PDF";
+        setExportAssignmentError(msg);
+      } finally {
+        setExportAssignmentLoadingId(null);
+      }
+      return;
+    }
+
     try {
       const response = await fetch(`${API_BASE}/assignments/${assignmentId}/pdf`, {
         method: "GET",
@@ -2720,20 +3976,18 @@ function App() {
       const disposition = response.headers.get("Content-Disposition") || "";
       const match = disposition.match(/filename=\"([^\"]+)\"/i);
       const filename = match?.[1] || `rutina_${assignmentId}.pdf`;
-      const url = window.URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      window.URL.revokeObjectURL(url);
+      downloadPdfBlob(blob, filename);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "No se pudo generar el PDF";
-      setDeleteAssignedRoutineError(msg);
+      setExportAssignmentError(msg);
     } finally {
       setExportAssignmentLoadingId(null);
     }
+  }, [downloadPdfBlob, token]);
+
+  const getAssignmentPdfDownloadUrl = useCallback((assignmentId: number) => {
+    if (!token) return "#";
+    return `${API_BASE}/assignments/${assignmentId}/pdf-download?access_token=${encodeURIComponent(token)}`;
   }, [token]);
 
   const handleDeleteRoutineConfirm = async () => {
@@ -2803,120 +4057,217 @@ function App() {
       <>
         <Box
           minH="100vh"
-          bg="#f3f4f6"
-          px={{ base: 4, md: 8 }}
-          py={{ base: 6, md: 8 }}
+          bg="linear-gradient(180deg, #fff7ed 0%, #f8fafc 34%, #eef2ff 100%)"
+          px={{ base: 0, md: 8 }}
+          py={{ base: 0, md: 8 }}
           display="flex"
           alignItems="center"
           justifyContent="center"
         >
-          <Box w="full" maxW="640px">
-            <Stack spacing={6} align="center">
-              <Box
-                w="120px"
-                h="120px"
-                borderRadius="full"
-                bg="#0d1b2a"
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
-                overflow="hidden"
-                boxShadow="0 8px 24px rgba(0,0,0,0.12)"
-                border="3px solid white"
-              >
-                <Image src={archeryImg} alt="Arqueros Andinos" w="full" h="full" objectFit="cover" />
-              </Box>
+          <Box w="full" maxW="1080px">
+            <Stack spacing={{ base: 0, md: 6 }} align="stretch">
               <Box
                 w="full"
-                maxW="460px"
-                bg="white"
-                borderRadius="14px"
-                border="1px solid"
-                borderColor="gray.200"
-                boxShadow="0 18px 35px rgba(0,0,0,0.10)"
+                minH={{ base: "100vh", md: "auto" }}
+                bg={{ base: "transparent", md: "white" }}
+                borderRadius={{ base: "0", md: "32px" }}
+                border={{ base: "none", md: "1px solid" }}
+                borderColor={{ md: "rgba(251, 146, 60, 0.12)" }}
+                boxShadow={{ base: "none", md: "0 24px 60px rgba(15, 23, 42, 0.10)" }}
                 overflow="hidden"
+                display="grid"
+                gridTemplateColumns={{ base: "1fr", md: "1.02fr 0.98fr" }}
               >
-                <Box px={{ base: 6, md: 7 }} py={{ base: 6, md: 7 }}>
-                  <Stack spacing={5}>
-                    <Heading size="md" color="#1f2937">
-                      Iniciar Sesión
-                    </Heading>
-                    <Stack
-                      as="form"
-                      spacing={4}
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        if (!authLoading && username && password) {
-                          void handleLogin();
-                        }
-                      }}
+                <Box
+                  display={{ base: "none", md: "flex" }}
+                  position="relative"
+                  bg="linear-gradient(165deg, #111827 0%, #1f2937 45%, #fb5a13 135%)"
+                  px={10}
+                  py={10}
+                  flexDirection="column"
+                  alignItems="center"
+                  justifyContent="center"
+                  minH="620px"
+                >
+                  <Stack spacing={6} position="relative" zIndex={1} align="center" textAlign="center">
+                    <Box
+                      w="96px"
+                      h="96px"
+                      borderRadius="28px"
+                      bg="rgba(255,255,255,0.14)"
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                      overflow="hidden"
+                      border="1px solid rgba(255,255,255,0.18)"
+                      boxShadow="0 18px 40px rgba(15, 23, 42, 0.18)"
                     >
-                      <FormControl>
-                        <FormLabel color="gray.700" mb={1.5} fontSize="sm">
-                          Usuario
-                        </FormLabel>
+                      <Image src={archeryImg} alt="Arqueros Andinos" w="full" h="full" objectFit="cover" />
+                    </Box>
+                    <Stack spacing={3} maxW="340px" align="center">
+                      <Text fontSize="13px" fontWeight="700" color="rgba(255,255,255,0.75)" letterSpacing="0.08em" textTransform="uppercase">
+                        Plataforma de entrenamiento
+                      </Text>
+                      <Heading size="xl" color="white" lineHeight="1.08">
+                        Accede a tu panel de Arquería
+                      </Heading>
+                      <Text color="rgba(255,255,255,0.82)" fontSize="15px" lineHeight="1.7">
+                        Gestiona deportistas, rutinas y ejercicios desde una interfaz más cómoda para escritorio y móvil.
+                      </Text>
+                    </Stack>
+                  </Stack>
+                  <Box
+                    position="absolute"
+                    inset="0"
+                    background="radial-gradient(circle at top right, rgba(255,255,255,0.14), transparent 36%), radial-gradient(circle at bottom left, rgba(255,255,255,0.08), transparent 32%)"
+                  />
+                </Box>
+
+                <Box
+                  position="relative"
+                  px={{ base: 5, sm: 6, md: 0 }}
+                  pt={{ base: 7, md: 0 }}
+                  pb={{ base: 8, md: 0 }}
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  bg={{ base: "transparent", md: "white" }}
+                >
+                  <Stack
+                    w="full"
+                    maxW={{ base: "420px", md: "420px" }}
+                    spacing={{ base: 5, md: 6 }}
+                  >
+                    <Stack spacing={4} display={{ base: "flex", md: "none" }} align="center" pt={2}>
+                      <Box
+                        w="96px"
+                        h="96px"
+                        borderRadius="30px"
+                        bg="#111827"
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="center"
+                        overflow="hidden"
+                        boxShadow="0 16px 40px rgba(15, 23, 42, 0.16)"
+                        border="3px solid rgba(255,255,255,0.9)"
+                      >
+                        <Image src={archeryImg} alt="Arqueros Andinos" w="full" h="full" objectFit="cover" />
+                      </Box>
+                      <Stack spacing={1} align="center">
+                        <Heading size="lg" color="#111827">
+                          Iniciar sesión
+                        </Heading>
+                        <Text fontSize="14px" color="#667085" textAlign="center" maxW="280px">
+                          Ingresa con tu cuenta para acceder al panel y continuar tu trabajo.
+                        </Text>
+                      </Stack>
+                    </Stack>
+
+                    <Box
+                      bg="white"
+                      border={{ base: "1px solid", md: "none" }}
+                      borderColor="rgba(226, 232, 240, 0.95)"
+                      borderRadius={{ base: "28px", md: "24px" }}
+                      boxShadow={{ base: "0 24px 54px rgba(15, 23, 42, 0.10)", md: "none" }}
+                      px={{ base: 5, sm: 6, md: 8 }}
+                      py={{ base: 5, md: 8 }}
+                    >
+                      <Stack spacing={{ base: 4.5, md: 5 }}>
+                        <Stack spacing={1} display={{ base: "none", md: "flex" }}>
+                          <Heading size="lg" color="#111827">
+                            Iniciar sesión
+                          </Heading>
+                          <Text color="#667085" fontSize="14px">
+                            Accede a tu cuenta para continuar.
+                          </Text>
+                        </Stack>
+
+                        <Stack
+                          as="form"
+                          spacing={4}
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            if (!authLoading && username && password) {
+                              void handleLogin();
+                            }
+                          }}
+                        >
+                          <FormControl>
+                            <FormLabel color="#344054" mb={1.5} fontSize="sm" fontWeight="700">
+                              Usuario
+                            </FormLabel>
                         <Input
                           value={username}
                           onChange={(e) => setUsername(e.target.value)}
-                          bg="#f9fafb"
-                          borderColor="#d1d5db"
-                          borderRadius="8px"
-                          h="42px"
-                          _hover={{ borderColor: "gray.400" }}
-                          _focusVisible={{ borderColor: "#d97706", boxShadow: "0 0 0 1px #d97706" }}
-                        />
-                      </FormControl>
-                      <FormControl>
-                        <FormLabel color="gray.700" mb={1.5} fontSize="sm">
-                          Contraseña
-                        </FormLabel>
-                        <PasswordInput
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          bg="#f9fafb"
-                          borderColor="#d1d5db"
-                          borderRadius="8px"
-                          h="42px"
-                          _hover={{ borderColor: "gray.400" }}
-                          _focusVisible={{ borderColor: "#d97706", boxShadow: "0 0 0 1px #d97706" }}
-                        />
-                      </FormControl>
+                          name="username"
+                          autoComplete="username"
+                          bg="#f8fafc"
+                          borderColor="#e2e8f0"
+                          borderRadius="14px"
+                              h="50px"
+                              px={4}
+                              _hover={{ borderColor: "#cbd5e1" }}
+                              _focusVisible={{ borderColor: "#fb5a13", boxShadow: "0 0 0 1px #fb5a13" }}
+                            />
+                          </FormControl>
+                          <FormControl>
+                            <FormLabel color="#344054" mb={1.5} fontSize="sm" fontWeight="700">
+                              Contraseña
+                            </FormLabel>
+                            <PasswordInput
+                              value={password}
+                              onChange={(e) => setPassword(e.target.value)}
+                              name="current-password"
+                              autoComplete="current-password"
+                              bg="#f8fafc"
+                              borderColor="#e2e8f0"
+                              borderRadius="14px"
+                              h="50px"
+                              px={4}
+                              _hover={{ borderColor: "#cbd5e1" }}
+                              _focusVisible={{ borderColor: "#fb5a13", boxShadow: "0 0 0 1px #fb5a13" }}
+                            />
+                          </FormControl>
 
-                      <HStack justify="space-between" fontSize="sm" color="gray.600">
-                        <HStack spacing={2}>
-                          <Text>Recordarme</Text>
-                          <Checkbox isChecked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} colorScheme="orange" />
-                        </HStack>
-                        <Text color="#d97706" fontWeight="500">
-                          ¿Olvidaste tu contraseña?
-                        </Text>
-                      </HStack>
+                          <Stack spacing={3} pt={1}>
+                            <HStack justify="space-between" align={{ base: "start", sm: "center" }} fontSize="sm" color="#667085" spacing={3} flexWrap="wrap">
+                              <HStack spacing={2}>
+                                <Checkbox isChecked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} colorScheme="orange" />
+                                <Text>Recordarme</Text>
+                              </HStack>
+                              <Text color="#fb5a13" fontWeight="700" whiteSpace="nowrap">
+                                ¿Olvidaste tu contraseña?
+                              </Text>
+                            </HStack>
 
-                      {authError && (
-                        <Alert status="error" borderRadius="md">
-                          <AlertIcon />
-                          {authError}
-                        </Alert>
-                      )}
+                            {authError && (
+                              <Alert status="error" borderRadius="16px">
+                                <AlertIcon />
+                                {authError}
+                              </Alert>
+                            )}
 
-                      <Button
-                        type="submit"
-                        bg="#d97706"
-                        color="white"
-                        _hover={{ bg: "#b45309" }}
-                        _active={{ bg: "#92400e" }}
-                        h="44px"
-                        borderRadius="8px"
-                        fontWeight="600"
-                        isLoading={authLoading}
-                        isDisabled={!username || !password}
-                      >
-                        Ingresar
-                      </Button>
-                    </Stack>
+                            <Button
+                              type="submit"
+                              bg="#fb5a13"
+                              color="white"
+                              _hover={{ bg: "#ea580c" }}
+                              _active={{ bg: "#c2410c" }}
+                              h="52px"
+                              borderRadius="16px"
+                              fontWeight="700"
+                              fontSize="15px"
+                              isLoading={authLoading}
+                              isDisabled={!username || !password}
+                            >
+                              Ingresar
+                            </Button>
+                          </Stack>
+                        </Stack>
+                      </Stack>
+                    </Box>
                   </Stack>
                 </Box>
-                <Box h="4px" bg="linear-gradient(90deg, #f59e0b 0%, #ef4444 100%)" />
               </Box>
             </Stack>
           </Box>
@@ -2928,23 +4279,35 @@ function App() {
   if (view === "professor") {
     return (
       <>
-        <Grid templateColumns={{ base: "1fr", md: "250px 1fr" }} minH="100vh" bg="#f9fafb">
+        <Box display={{ base: "flex", md: "none" }} position="sticky" top={0} zIndex={20} alignItems="center" justifyContent="space-between" h="44px" px={3} bg="white" borderBottomWidth="1px" borderColor="gray.200">
+          <HStack spacing={2.5}>
+            <Text fontWeight="800" color="#111827" fontSize="16px">{mobileSectionTitle}</Text>
+          </HStack>
+          <Box as="button" type="button" onClick={() => goToSection("perfil")} width="29px" height="29px" borderRadius="full" border="1px solid" borderColor="orange.200" bg="orange.50" color="#111827" display="flex" alignItems="center" justifyContent="center">
+            <Box as="svg" viewBox="0 0 24 24" boxSize="16px" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 20a6 6 0 0 0-12 0" />
+              <circle cx="12" cy="10" r="4" />
+            </Box>
+          </Box>
+        </Box>
+        <Grid templateColumns={{ base: "1fr", md: "92px 1fr", lg: "220px 1fr", xl: "250px 1fr" }} minH={{ base: "calc(100vh - 44px)", md: "100vh" }} bg="#f9fafb">
           <GridItem
             borderRight={{ base: "none", md: "1px solid rgba(148, 163, 184, 0.45)" }}
             bg="white"
-            p={{ base: 5, md: 4 }}
+            p={{ base: 5, md: 3, lg: 4 }}
             position={{ base: "static", md: "sticky" }}
             top={{ base: "auto", md: 0 }}
             h={{ base: "auto", md: "100vh" }}
             alignSelf="start"
-            display="flex"
+            display={{ base: "none", md: "flex" }}
             flexDirection="column"
           >
-            <Stack spacing={5} h="full">
-              <Box px={2} pt={2}>
+            <Stack spacing={{ base: 5, md: 4, lg: 5 }} h="full">
+              <Box px={{ base: 2, md: 0, lg: 2 }} pt={2}>
                 <Box
-                  h="108px"
-                  w="320px"
+                  h={{ md: "44px", lg: "108px" }}
+                  w={{ md: "28px", lg: "320px" }}
+                  mx={{ md: "auto", lg: 0 }}
                   bg="black"
                   sx={{
                     WebkitMaskImage: `url(${arquerosAndinosHeaderUrl})`,
@@ -2958,15 +4321,44 @@ function App() {
                   }}
                 />
               </Box>
-              <Stack spacing={1} mt="10px">
+              <Stack spacing={1} mt={{ base: "10px", md: 0, lg: "10px" }}>
                 <HStack
-                  px={3}
+                  px={{ md: 2, lg: 3 }}
+                  py={3}
+                  borderRadius="md"
+                  bg={profSection === "inicio" ? "orange.50" : "transparent"}
+                  color={profSection === "inicio" ? "orange.600" : "gray.700"}
+                  fontWeight={profSection === "inicio" ? "600" : "500"}
+                  cursor="pointer"
+                  justify={{ md: "center", lg: "flex-start" }}
+                  _hover={{ bg: "gray.50" }}
+                  onClick={() => goToSection("inicio")}
+                >
+                  <Box
+                    as="svg"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    boxSize="18px"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+                    <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                  </Box>
+                  <Text display={{ base: "block", md: "none", lg: "block" }} fontSize="17px">Inicio</Text>
+                </HStack>
+                <HStack
+                  px={{ md: 2, lg: 3 }}
                   py={3}
                   borderRadius="md"
                   bg={profSection === "administrar_rutinas" ? "orange.50" : "transparent"}
                   color={profSection === "administrar_rutinas" ? "orange.600" : "gray.700"}
                   fontWeight={profSection === "administrar_rutinas" ? "600" : "500"}
                   cursor="pointer"
+                  justify={{ md: "center", lg: "flex-start" }}
                   onClick={() => goToSection("administrar_rutinas")}
                 >
                   <Box
@@ -2984,16 +4376,17 @@ function App() {
                     <rect width="7" height="7" x="14" y="3" rx="1" />
                     <rect width="7" height="7" x="14" y="14" rx="1" />
                   </Box>
-                  <Text fontSize="17px">Administrar rutinas</Text>
+                  <Text display={{ base: "block", md: "none", lg: "block" }} fontSize="17px">Administrar rutinas</Text>
                 </HStack>
                 <HStack
-                  px={3}
+                  px={{ md: 2, lg: 3 }}
                   py={3}
                   borderRadius="md"
                   bg={profSection === "rutina" ? "orange.50" : "transparent"}
                   color={profSection === "rutina" ? "orange.600" : "gray.700"}
                   fontWeight={profSection === "rutina" ? "600" : "500"}
                   cursor="pointer"
+                  justify={{ md: "center", lg: "flex-start" }}
                   _hover={{ bg: "gray.50" }}
                   onClick={() => goToSection("rutina")}
                 >
@@ -3016,16 +4409,17 @@ function App() {
                     <path d="M8 14h8" />
                     <path d="M8 18h5" />
                   </Box>
-                  <Text fontSize="17px">Rutinas</Text>
+                  <Text display={{ base: "block", md: "none", lg: "block" }} fontSize="17px">Rutinas</Text>
                 </HStack>
                 <HStack
-                  px={3}
+                  px={{ md: 2, lg: 3 }}
                   py={3}
                   borderRadius="md"
                   bg={profSection === "ejercicio" ? "orange.50" : "transparent"}
                   color={profSection === "ejercicio" ? "orange.600" : "gray.700"}
                   fontWeight={profSection === "ejercicio" ? "600" : "500"}
                   cursor="pointer"
+                  justify={{ md: "center", lg: "flex-start" }}
                   _hover={{ bg: "gray.50" }}
                   onClick={() => goToSection("ejercicio")}
                 >
@@ -3044,16 +4438,17 @@ function App() {
                     <circle cx="12" cy="12" r="6" />
                     <circle cx="12" cy="12" r="2" />
                   </Box>
-                  <Text fontSize="17px">Ejercicios</Text>
+                  <Text display={{ base: "block", md: "none", lg: "block" }} fontSize="17px">Ejercicios</Text>
                 </HStack>
                 <HStack
-                  px={3}
+                  px={{ md: 2, lg: 3 }}
                   py={3}
                   borderRadius="md"
                   bg={profSection === "alumno" ? "orange.50" : "transparent"}
                   color={profSection === "alumno" ? "orange.600" : "gray.700"}
                   fontWeight={profSection === "alumno" ? "600" : "500"}
                   cursor="pointer"
+                  justify={{ md: "center", lg: "flex-start" }}
                   _hover={{ bg: "gray.50" }}
                   onClick={() => goToSection("alumno")}
                 >
@@ -3073,7 +4468,7 @@ function App() {
                     <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
                     <circle cx="9" cy="7" r="4" />
                   </Box>
-                  <Text fontSize="17px">Deportistas</Text>
+                  <Text display={{ base: "block", md: "none", lg: "block" }} fontSize="17px">Deportistas</Text>
                 </HStack>
               </Stack>
               <Stack spacing={3}>
@@ -3085,7 +4480,7 @@ function App() {
               </Stack>
               <Box flex="1" />
               <Box borderTop="1px solid" borderColor="gray.200" pt={3}>
-                <HStack px={2} py={2.5} borderRadius="md" bg={profSection === "perfil" ? "orange.50" : "transparent"} cursor="pointer" _hover={{ bg: "gray.50" }} onClick={() => goToSection("perfil")}>
+                <HStack px={2} py={2.5} borderRadius="md" bg={profSection === "perfil" ? "orange.50" : "transparent"} cursor="pointer" justify={{ md: "center", lg: "flex-start" }} _hover={{ bg: "gray.50" }} onClick={() => goToSection("perfil")}>
                   <Box
                     as="svg"
                     xmlns="http://www.w3.org/2000/svg"
@@ -3102,11 +4497,11 @@ function App() {
                     <circle cx="12" cy="10" r="4" />
                     <circle cx="12" cy="12" r="10" />
                   </Box>
-                  <Text fontSize="17px" color={profSection === "perfil" ? "orange.600" : "gray.700"} fontWeight={profSection === "perfil" ? "600" : "500"}>
+                  <Text display={{ base: "block", md: "none", lg: "block" }} fontSize="17px" color={profSection === "perfil" ? "orange.600" : "gray.700"} fontWeight={profSection === "perfil" ? "600" : "500"}>
                     Perfil
                   </Text>
                 </HStack>
-                <HStack px={2} py={2.5} borderRadius="md" cursor="pointer" _hover={{ bg: "gray.50" }} onClick={handleLogout}>
+                <HStack px={2} py={2.5} borderRadius="md" cursor="pointer" justify={{ md: "center", lg: "flex-start" }} _hover={{ bg: "gray.50" }} onClick={handleLogout}>
                   <Box
                     as="svg"
                     xmlns="http://www.w3.org/2000/svg"
@@ -3123,18 +4518,36 @@ function App() {
                     <path d="M21 12H9" />
                     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                   </Box>
-                  <Text fontSize="17px" color="gray.700" fontWeight="500">
+                  <Text display={{ base: "block", md: "none", lg: "block" }} fontSize="17px" color="gray.700" fontWeight="500">
                     Cerrar sesión
                   </Text>
                 </HStack>
               </Box>
             </Stack>
           </GridItem>
-          <GridItem pl={{ base: 6, md: 8 }} pr={{ base: 6, md: 8 }} py={{ base: 6, md: 7 }} display="flex" alignItems="flex-start" justifyContent="flex-start" w="full" fontSize={{ base: "sm", xl: "md", "2xl": "lg" }}>
+          <GridItem pl={{ base: 0, md: 5, lg: 7, xl: 8 }} pr={{ base: 0, md: 5, lg: 7, xl: 8 }} py={{ base: 0, md: 5, lg: 6, xl: 7 }} pb={{ base: "74px", md: 5, lg: 6, xl: 7 }} display="flex" alignItems="flex-start" justifyContent="flex-start" w="full" fontSize={{ base: "sm", xl: "md", "2xl": "lg" }}>
             <Stack spacing={{ base: 4, xl: 6 }} w="full">
               <AppDataProvider value={appData}>
               <ProfessorListsProvider>
               <Suspense fallback={<Spinner />}>
+                {profSection === "inicio" && (
+                  <HomeSection
+                    activeAssignments={activeAssignments}
+                    activeStudents={activeStudents}
+                    assignments={assignments}
+                    exercises={exercises}
+                    routines={routines}
+                    students={students}
+                    studentNameById={studentNameById}
+                    routineNameById={routineNameById}
+                    formatDateEs={formatDateEs}
+                    goToSection={goToSection}
+                    openAdminAssignModal={openAdminAssignModal}
+                    openCreateRoutineModal={openCreateRoutineModal}
+                    openCreateStudentModal={openCreateStudentModal}
+                    openCreateExerciseModal={openCreateExerciseModal}
+                  />
+                )}
                 {profSection === "administrar_rutinas" && (
                   <AdminRoutinesSection
                     activeAssignments={activeAssignments}
@@ -3147,6 +4560,9 @@ function App() {
                     exerciseNameById={exerciseNameById}
                     actionIconButtonSize={actionIconButtonSize}
                     exportAssignmentLoadingId={exportAssignmentLoadingId}
+                    exportAssignmentError={exportAssignmentError}
+                    setExportAssignmentError={setExportAssignmentError}
+                    getAssignmentPdfDownloadUrl={getAssignmentPdfDownloadUrl}
                     saveAssignmentLoadingId={saveAssignmentLoadingId}
                     openSaveAssignmentModal={openSaveAssignmentModal}
                     handleExportAssignmentPdf={handleExportAssignmentPdf}
@@ -3180,15 +4596,11 @@ function App() {
                   <ExercisesSection
                     expandedExercise={expandedExercise}
                     setExpandedExercise={setExpandedExercise}
-                    setCreateModalOpen={setCreateModalOpen}
-                    setEditExercise={setEditExercise}
-                    setEditName={setEditName}
-                    setEditRounds={setEditRounds}
-                    setEditArrows={setEditArrows}
-                    setEditDistance={setEditDistance}
-                    setEditDescription={setEditDescription}
-                    setEditError={setEditError}
-                    setEditModalOpen={setEditModalOpen}
+                    setCreateModalOpen={(isOpen: boolean) => {
+                      if (isOpen) openCreateExerciseModal();
+                      else closeCreateExerciseModal();
+                    }}
+                    openEditExerciseModal={openEditExerciseModal}
                     setDeleteExercise={setDeleteExercise}
                     setDeleteModalOpen={setDeleteModalOpen}
                     actionIconButtonSize={actionIconButtonSize}
@@ -3201,7 +4613,10 @@ function App() {
                   <StudentsSection
                     expandedStudent={expandedStudent}
                     setExpandedStudent={setExpandedStudent}
-                    setCreateStudentModalOpen={setCreateStudentModalOpen}
+                    setCreateStudentModalOpen={(isOpen: boolean) => {
+                      if (isOpen) openCreateStudentModal();
+                      else closeCreateStudentModal();
+                    }}
                     userPlusIconUrl={userPlusIconUrl}
                     actionIconButtonSize={actionIconButtonSize}
                     actionIconSize={actionIconSize}
@@ -3223,7 +4638,7 @@ function App() {
                     userRole={userRole}
                     changePasswordSuccess={changePasswordSuccess}
                     openChangePasswordModal={openChangePasswordModal}
-                    openCreateUserModal={userRole === "professor" ? openAdminUserModal : null}
+                    handleLogout={handleLogout}
                   />
                 )}
               </Suspense>
@@ -3232,6 +4647,39 @@ function App() {
             </Stack>
           </GridItem>
         </Grid>
+        <Box display={{ base: "block", md: "none" }} position="fixed" left={0} right={0} bottom={0} zIndex={1000} bg="white" borderTopWidth="1px" borderColor="gray.200" boxShadow="0 -10px 24px rgba(15, 23, 42, 0.06)" pb="env(safe-area-inset-bottom)">
+          <HStack h="64px" justify="space-around" align="center">
+            <MobileBottomNavItem label="Inicio" active={profSection === "inicio"} onClick={() => goToSection("inicio")}>
+              <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+              <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            </MobileBottomNavItem>
+            <MobileBottomNavItem label="Administrar rutinas" active={profSection === "administrar_rutinas"} onClick={() => goToSection("administrar_rutinas")}>
+              <rect width="7" height="18" x="3" y="3" rx="1" />
+              <rect width="7" height="7" x="14" y="3" rx="1" />
+              <rect width="7" height="7" x="14" y="14" rx="1" />
+            </MobileBottomNavItem>
+            <MobileBottomNavItem label="Rutinas" active={profSection === "rutina"} onClick={() => goToSection("rutina")}>
+              <path d="M8 2v4" />
+              <path d="M12 2v4" />
+              <path d="M16 2v4" />
+              <rect width="16" height="18" x="4" y="4" rx="2" />
+              <path d="M8 10h6" />
+              <path d="M8 14h8" />
+              <path d="M8 18h5" />
+            </MobileBottomNavItem>
+            <MobileBottomNavItem label="Ejercicios" active={profSection === "ejercicio"} onClick={() => goToSection("ejercicio")}>
+              <circle cx="12" cy="12" r="10" />
+              <circle cx="12" cy="12" r="6" />
+              <circle cx="12" cy="12" r="2" />
+            </MobileBottomNavItem>
+            <MobileBottomNavItem label="Deportistas" active={profSection === "alumno"} onClick={() => goToSection("alumno")}>
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+              <path d="M16 3.128a4 4 0 0 1 0 7.744" />
+              <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+              <circle cx="9" cy="7" r="4" />
+            </MobileBottomNavItem>
+          </HStack>
+        </Box>
         <Modal isOpen={adminUserModalOpen} onClose={closeAdminUserModal} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "480px" }} borderRadius="12px" overflow="hidden">
@@ -3312,7 +4760,113 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={changePasswordModalOpen} onClose={closeChangePasswordModal} isCentered>
+        {changePasswordModalOpen && !isDesktopViewport && (
+          <Box position="fixed" inset={0} zIndex={1400} bg="#f6f7fb">
+            <Flex direction="column" h="100%">
+              <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" px={4} pt="calc(0.75rem + env(safe-area-inset-top))" pb={3}>
+                <HStack justify="space-between" align="center" spacing={3}>
+                  <Button
+                    variant="ghost"
+                    minW="auto"
+                    px={1}
+                    color="#334155"
+                    _hover={{ bg: "transparent", color: "#0f172a" }}
+                    _active={{ bg: "transparent", color: "#0f172a" }}
+                    onClick={closeChangePasswordModal}
+                    aria-label="Volver"
+                  >
+                    <Box as="svg" viewBox="0 0 24 24" boxSize="20px" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m15 18-6-6 6-6" />
+                    </Box>
+                  </Button>
+                  <HStack spacing={2} flex="1" justify="center" mr="28px">
+                    <Box as="svg" viewBox="0 0 24 24" boxSize="16px" fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect width="18" height="12" x="3" y="10" rx="2" />
+                      <path d="M7 10V7a5 5 0 0 1 10 0v3" />
+                    </Box>
+                    <Text fontSize="16px" fontWeight="800" color="#1f2937">Cambiar contraseña</Text>
+                  </HStack>
+                </HStack>
+                <Text mt={2} fontSize="12px" color="#667085">
+                  Actualiza tu contraseña y vuelve a tu perfil al terminar.
+                </Text>
+              </Box>
+
+              <Box flex="1" overflowY="auto" px={3.5} py={4} pb="112px">
+                <Stack spacing={4}>
+                  {changePasswordError && (
+                    <Alert status="error" borderRadius="md">
+                      <AlertIcon />
+                      {changePasswordError}
+                    </Alert>
+                  )}
+                  <Box bg="white" borderWidth="1px" borderColor="#e5e7eb" borderRadius="16px" p={4} boxShadow="0 10px 24px rgba(15, 23, 42, 0.04)">
+                    <Stack spacing={4}>
+                      <FormControl isRequired>
+                        <FormLabel>Contraseña actual</FormLabel>
+                        <PasswordInput
+                          value={changePasswordCurrent}
+                          onChange={(e) => {
+                            setChangePasswordCurrent(e.target.value);
+                            if (changePasswordError) setChangePasswordError(null);
+                          }}
+                          autoComplete="current-password"
+                        />
+                      </FormControl>
+                      <FormControl isRequired>
+                        <FormLabel>Nueva contraseña</FormLabel>
+                        <PasswordInput
+                          value={changePasswordNext}
+                          onChange={(e) => {
+                            setChangePasswordNext(e.target.value);
+                            if (changePasswordError) setChangePasswordError(null);
+                          }}
+                          autoComplete="new-password"
+                        />
+                        <Text mt={2} fontSize="sm" color="gray.500">Debe tener al menos 8 caracteres.</Text>
+                        {changePasswordNext.length > 0 && changePasswordNext.length < 8 && (
+                          <Text mt={1} fontSize="sm" color="red.500">La nueva contraseña debe tener al menos 8 caracteres.</Text>
+                        )}
+                        {changePasswordCurrent.length > 0 && changePasswordNext.length > 0 && changePasswordCurrent === changePasswordNext && (
+                          <Text mt={1} fontSize="sm" color="red.500">La nueva contraseña no puede ser igual a la actual.</Text>
+                        )}
+                      </FormControl>
+                      <FormControl isRequired>
+                        <FormLabel>Confirmar nueva contraseña</FormLabel>
+                        <PasswordInput
+                          value={changePasswordConfirm}
+                          onChange={(e) => {
+                            setChangePasswordConfirm(e.target.value);
+                            if (changePasswordError) setChangePasswordError(null);
+                          }}
+                          autoComplete="new-password"
+                        />
+                        {changePasswordConfirm.length > 0 && changePasswordNext !== changePasswordConfirm && (
+                          <Text mt={1} fontSize="sm" color="red.500">Las contraseñas no coinciden.</Text>
+                        )}
+                        {changePasswordConfirm.length > 0 && changePasswordNext === changePasswordConfirm && changePasswordNext.length >= 8 && changePasswordCurrent !== changePasswordNext && (
+                          <Text mt={1} fontSize="sm" color="green.600">Las contraseñas coinciden.</Text>
+                        )}
+                      </FormControl>
+                    </Stack>
+                  </Box>
+                </Stack>
+              </Box>
+
+              <Box position="fixed" left={0} right={0} bottom={0} zIndex={1401} bg="white" borderTopWidth="1px" borderColor="gray.200" px={4} pt={3} pb="calc(0.9rem + env(safe-area-inset-bottom))" boxShadow="0 -10px 24px rgba(15, 23, 42, 0.08)">
+                <HStack spacing={3}>
+                  <Button flex="1" variant="outline" borderColor="gray.300" onClick={closeChangePasswordModal} isDisabled={changePasswordLoading}>
+                    Cancelar
+                  </Button>
+                  <Button flex="1" bg="#f97316" color="white" _hover={{ bg: "#ea580c" }} _active={{ bg: "#c2410c" }} onClick={() => { void handleChangePassword(); }} isLoading={changePasswordLoading} isDisabled={!changePasswordCanSubmit}>
+                    Guardar contraseña
+                  </Button>
+                </HStack>
+              </Box>
+            </Flex>
+          </Box>
+        )}
+        <Modal isOpen={changePasswordModalOpen && isDesktopViewport} onClose={closeChangePasswordModal} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "520px" }} borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
@@ -3391,108 +4945,84 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={editModalOpen} onClose={() => setEditModalOpen(false)} isCentered>
+        {editModalOpen && !isDesktopViewport && (
+          <Box
+            position="fixed"
+            inset={0}
+            zIndex={1500}
+            bg="#f6f7fb"
+            animation={`${isClosingEditExerciseMobileScreen ? createStudentMobileSlideOut : createStudentMobileSlideIn} ${CREATE_STUDENT_MOBILE_ANIMATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`}
+          >
+            <Flex direction="column" h="100%">
+              <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" px={4} pt="calc(0.75rem + env(safe-area-inset-top))" pb={3}>
+                <HStack justify="space-between" align="center" spacing={3}>
+                  <Button
+                    variant="ghost"
+                    minW="auto"
+                    px={1}
+                    color="#334155"
+                    _hover={{ bg: "transparent", color: "#0f172a" }}
+                    _active={{ bg: "transparent", color: "#0f172a" }}
+                    onClick={closeEditExerciseModal}
+                    aria-label="Volver"
+                  >
+                    <Box as="svg" viewBox="0 0 24 24" boxSize="20px" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m15 18-6-6 6-6" />
+                    </Box>
+                  </Button>
+                  <HStack spacing={2} flex="1" justify="center" mr="28px">
+                    <Image src={bowIconUrl} alt="" boxSize="16px" filter="brightness(0) saturate(100%) invert(52%) sepia(94%) saturate(2602%) hue-rotate(1deg) brightness(103%) contrast(105%)" />
+                    <Text fontSize="16px" fontWeight="800" color="#1f2937">Editar ejercicio</Text>
+                  </HStack>
+                </HStack>
+                <Text mt={2} fontSize="12px" color="#667085">
+                  Ajusta la configuración del ejercicio sin salir de la vista móvil.
+                </Text>
+              </Box>
+
+              <Box flex="1" overflowY="auto" px={3.5} py={4} pb="112px">
+                {editExerciseFormFields}
+              </Box>
+
+              <Box position="fixed" left={0} right={0} bottom={0} zIndex={1501} bg="white" borderTopWidth="1px" borderColor="gray.200" px={4} pt={3} pb="calc(0.9rem + env(safe-area-inset-bottom))" boxShadow="0 -10px 24px rgba(15, 23, 42, 0.08)">
+                <HStack spacing={3}>
+                  <Button flex="1" bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={closeEditExerciseModal}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    flex="1"
+                    bg="#f97316"
+                    color="white"
+                    _hover={{ bg: "#ea580c" }}
+                    _active={{ bg: "#c2410c" }}
+                    isLoading={editLoading}
+                    isDisabled={!editExerciseCanSave}
+                    onClick={handleEditSave}
+                  >
+                    Guardar
+                  </Button>
+                </HStack>
+              </Box>
+            </Flex>
+          </Box>
+        )}
+        <Modal isOpen={editModalOpen && isDesktopViewport} onClose={closeEditExerciseModal} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between">
                 <Text fontWeight="700" color="gray.900">Editar ejercicio</Text>
-                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => setEditModalOpen(false)}>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={closeEditExerciseModal}>
                   ×
                 </Button>
               </HStack>
             </ModalHeader>
             <ModalBody maxH="70vh" overflowY="auto" py={5}>
-              <Stack spacing={4}>
-                <FormControl>
-                  <FormLabel color="gray.700" fontSize="sm">Nombre</FormLabel>
-                  <Input
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    borderColor="gray.300"
-                    borderRadius="8px"
-                    _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                  />
-                </FormControl>
-                <SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
-                  <FormControl>
-                    <FormLabel color="gray.700" fontSize="sm">Rondas</FormLabel>
-                    <Input
-                      type="number"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      min={1}
-                      step={1}
-                      value={editRounds}
-                      onChange={(e) => setEditRounds(normalizeInt(e.target.value))}
-                      onKeyDown={(e) => blockInvalidKeys(e, false)}
-                      onBeforeInput={handleBeforeInputInt}
-                      onPaste={handlePasteInt}
-                      borderColor="gray.300"
-                      borderRadius="8px"
-                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                    />
-                  </FormControl>
-                  <FormControl>
-                    <FormLabel color="gray.700" fontSize="sm">Flechas por ronda</FormLabel>
-                    <Input
-                      type="number"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      min={0}
-                      step={1}
-                      value={editArrows}
-                      onChange={(e) => setEditArrows(normalizeInt(e.target.value))}
-                      onKeyDown={(e) => blockInvalidKeys(e, false)}
-                      onBeforeInput={handleBeforeInputInt}
-                      onPaste={handlePasteInt}
-                      borderColor="gray.300"
-                      borderRadius="8px"
-                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                    />
-                  </FormControl>
-                  <FormControl>
-                    <FormLabel color="gray.700" fontSize="sm">Distancia (m)</FormLabel>
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      min={0}
-                      step={0.5}
-                      value={editDistance}
-                      onChange={(e) => setEditDistance(normalizeFloat(e.target.value))}
-                      onKeyDown={(e) => blockInvalidKeys(e, true)}
-                      onBeforeInput={handleBeforeInputFloat}
-                      onPaste={handlePasteFloat}
-                      borderColor="gray.300"
-                      borderRadius="8px"
-                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                    />
-                  </FormControl>
-                </SimpleGrid>
-                <FormControl>
-                  <FormLabel color="gray.700" fontSize="sm">Descripción</FormLabel>
-                  <Textarea
-                    value={editDescription}
-                    onChange={(e) => setEditDescription(e.target.value)}
-                    minH="120px"
-                    resize="vertical"
-                    borderColor="gray.300"
-                    _hover={{ borderColor: "gray.500" }}
-                    _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                    fontSize="md"
-                  />
-                </FormControl>
-                {editError && (
-                  <Alert status="error" borderRadius="md">
-                    <AlertIcon />
-                    {editError}
-                  </Alert>
-                )}
-              </Stack>
+              {editExerciseFormFields}
             </ModalBody>
             <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
               <HStack spacing={3}>
-                <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={() => setEditModalOpen(false)}>
+                <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={closeEditExerciseModal}>
                   Cancelar
                 </Button>
                 <Button
@@ -3501,7 +5031,7 @@ function App() {
                   _hover={{ bg: "#ea580c" }}
                   _active={{ bg: "#c2410c" }}
                   isLoading={editLoading}
-                  isDisabled={!editName || editRounds === "" || editArrows === "" || editDistance === ""}
+                  isDisabled={!editExerciseCanSave}
                   onClick={handleEditSave}
                 >
                   Guardar
@@ -3510,106 +5040,80 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={createModalOpen} onClose={closeCreateExerciseModal} isCentered>
+        {createModalOpen && !isDesktopViewport && (
+          <Box
+            position="fixed"
+            inset={0}
+            zIndex={1500}
+            bg="#f6f7fb"
+            animation={`${isClosingCreateExerciseMobileScreen ? createStudentMobileSlideOut : createStudentMobileSlideIn} ${CREATE_STUDENT_MOBILE_ANIMATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`}
+          >
+            <Flex direction="column" h="100%">
+              <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" px={4} pt="calc(0.75rem + env(safe-area-inset-top))" pb={3}>
+                <HStack justify="space-between" align="center" spacing={3}>
+                  <Button
+                    variant="ghost"
+                    minW="auto"
+                    px={1}
+                    color="#334155"
+                    _hover={{ bg: "transparent", color: "#0f172a" }}
+                    _active={{ bg: "transparent", color: "#0f172a" }}
+                    onClick={closeCreateExerciseModal}
+                    aria-label="Volver"
+                  >
+                    <Box as="svg" viewBox="0 0 24 24" boxSize="20px" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m15 18-6-6 6-6" />
+                    </Box>
+                  </Button>
+                  <HStack spacing={2} flex="1" justify="center" mr="28px">
+                    <Image src={bowIconUrl} alt="" boxSize="16px" filter="brightness(0) saturate(100%) invert(52%) sepia(94%) saturate(2602%) hue-rotate(1deg) brightness(103%) contrast(105%)" />
+                    <Text fontSize="16px" fontWeight="800" color="#1f2937">Crear ejercicio</Text>
+                  </HStack>
+                </HStack>
+                <Text mt={2} fontSize="12px" color="#667085">
+                  Registra un nuevo ejercicio manteniendo el mismo formato del panel.
+                </Text>
+              </Box>
+
+              <Box flex="1" overflowY="auto" px={3.5} py={4} pb="112px">
+                {createExerciseFormFields}
+              </Box>
+
+              <Box position="fixed" left={0} right={0} bottom={0} zIndex={1501} bg="white" borderTopWidth="1px" borderColor="gray.200" px={4} pt={3} pb="calc(0.9rem + env(safe-area-inset-bottom))" boxShadow="0 -10px 24px rgba(15, 23, 42, 0.08)">
+                <HStack spacing={3}>
+                  <Button flex="1" bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={closeCreateExerciseModal}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    flex="1"
+                    bg="#f97316"
+                    color="white"
+                    _hover={{ bg: "#ea580c" }}
+                    _active={{ bg: "#c2410c" }}
+                    isLoading={createLoading}
+                    isDisabled={!createExerciseCanSave}
+                    onClick={handleCreateSave}
+                  >
+                    Guardar
+                  </Button>
+                </HStack>
+              </Box>
+            </Flex>
+          </Box>
+        )}
+        <Modal isOpen={createModalOpen && isDesktopViewport} onClose={closeCreateExerciseModal} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between">
-                <Text fontWeight="700" color="gray.900">Nuevo Ejercicio</Text>
+                <Text fontWeight="700" color="gray.900">Crear ejercicio</Text>
                 <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={closeCreateExerciseModal}>
                   ×
                 </Button>
               </HStack>
             </ModalHeader>
             <ModalBody maxH="70vh" overflowY="auto" py={5}>
-              <Stack spacing={4}>
-                <FormControl>
-                  <FormLabel color="gray.700" fontSize="sm">Nombre</FormLabel>
-                  <Input
-                    value={createName}
-                    onChange={(e) => setCreateName(e.target.value)}
-                    borderColor="gray.300"
-                    borderRadius="8px"
-                    _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                  />
-                </FormControl>
-                <SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
-                  <FormControl>
-                    <FormLabel color="gray.700" fontSize="sm">Rondas</FormLabel>
-                    <Input
-                      type="number"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      min={1}
-                      step={1}
-                      value={createRounds}
-                      onChange={(e) => setCreateRounds(normalizeInt(e.target.value))}
-                      onKeyDown={(e) => blockInvalidKeys(e, false)}
-                      onBeforeInput={handleBeforeInputInt}
-                      onPaste={handlePasteInt}
-                      borderColor="gray.300"
-                      borderRadius="8px"
-                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                    />
-                  </FormControl>
-                  <FormControl>
-                    <FormLabel color="gray.700" fontSize="sm">Flechas por ronda</FormLabel>
-                    <Input
-                      type="number"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      min={0}
-                      step={1}
-                      value={createArrows}
-                      onChange={(e) => setCreateArrows(normalizeInt(e.target.value))}
-                      onKeyDown={(e) => blockInvalidKeys(e, false)}
-                      onBeforeInput={handleBeforeInputInt}
-                      onPaste={handlePasteInt}
-                      borderColor="gray.300"
-                      borderRadius="8px"
-                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                    />
-                  </FormControl>
-                  <FormControl>
-                    <FormLabel color="gray.700" fontSize="sm">Distancia (m)</FormLabel>
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      min={0}
-                      step={0.5}
-                      value={createDistance}
-                      onChange={(e) => setCreateDistance(normalizeFloat(e.target.value))}
-                      onKeyDown={(e) => blockInvalidKeys(e, true)}
-                      onBeforeInput={handleBeforeInputFloat}
-                      onPaste={handlePasteFloat}
-                      borderColor="gray.300"
-                      borderRadius="8px"
-                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                    />
-                  </FormControl>
-                </SimpleGrid>
-                <FormControl>
-                  <FormLabel color="gray.700" fontSize="sm">Descripción</FormLabel>
-                  <Textarea
-                    value={createDescription}
-                    onChange={(e) => setCreateDescription(e.target.value)}
-                    placeholder="Escribe los detalles del ejercicio..."
-                    minH="120px"
-                    resize="vertical"
-                    borderColor="gray.300"
-                    borderRadius="8px"
-                    _hover={{ borderColor: "gray.500" }}
-                    _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                    fontSize="md"
-                  />
-                </FormControl>
-                {createError && (
-                  <Alert status="error" borderRadius="md">
-                    <AlertIcon />
-                    {createError}
-                  </Alert>
-                )}
-              </Stack>
+              {createExerciseFormFields}
             </ModalBody>
             <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
               <HStack spacing={3}>
@@ -3622,7 +5126,7 @@ function App() {
                   _hover={{ bg: "#ea580c" }}
                   _active={{ bg: "#c2410c" }}
                   isLoading={createLoading}
-                  isDisabled={!createName || createRounds === "" || createArrows === "" || createDistance === ""}
+                  isDisabled={!createExerciseCanSave}
                   onClick={handleCreateSave}
                 >
                   Guardar
@@ -3672,7 +5176,10 @@ function App() {
           filteredRoutineExercises={filteredRoutineExercises}
           routineExercisesByDay={routineExercisesByDay}
           toggleRoutineExerciseForDay={toggleRoutineExerciseForDay}
-          setCreateModalOpen={setCreateModalOpen}
+          setCreateModalOpen={(isOpen: boolean) => {
+            if (isOpen) openCreateExerciseModal();
+            else closeCreateExerciseModal();
+          }}
           bowIconUrl={bowIconUrl}
           createRoutineError={createRoutineError}
           createRoutineLoading={createRoutineLoading}
@@ -3698,6 +5205,9 @@ function App() {
           setAssignmentObjective={setAssignmentObjective}
           assignmentProfessorNotes={assignmentProfessorNotes}
           setAssignmentProfessorNotes={setAssignmentProfessorNotes}
+          isRoutineCreateAddExerciseModalOpen={routineCreateAddExerciseModalOpen}
+          isCreateExerciseModalOpen={createModalOpen}
+          isRoutineCreateEditExerciseModalOpen={routineCreateEditExerciseModalOpen}
         />
         {false && (
         <Modal isOpen={createRoutineModalOpen} onClose={closeCreateRoutineModal} isCentered>
@@ -4308,13 +5818,68 @@ function App() {
           </ModalContent>
         </Modal>
         )}
-        <Modal isOpen={routineCreateAddExerciseModalOpen} onClose={() => setRoutineCreateAddExerciseModalOpen(false)} isCentered>
+        {routineCreateAddExerciseModalOpen && !isDesktopViewport && (
+          <Box position="fixed" inset={0} zIndex={1400} bg="#f6f7fb">
+            <Flex direction="column" h="100%">
+              <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" px={4} pt="calc(0.75rem + env(safe-area-inset-top))" pb={3}>
+                <HStack justify="space-between" align="center" spacing={3}>
+                  <Button variant="ghost" minW="auto" px={1} color="#334155" _hover={{ bg: "transparent", color: "#0f172a" }} _active={{ bg: "transparent", color: "#0f172a" }} onClick={closeRoutineCreateAddExerciseModal} aria-label="Volver">
+                    <Box as="svg" viewBox="0 0 24 24" boxSize="20px" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m15 18-6-6 6-6" />
+                    </Box>
+                  </Button>
+                  <HStack spacing={2} flex="1" justify="center" mr="28px">
+                    <Image src={bowIconUrl} alt="" boxSize="16px" filter="brightness(0) saturate(100%) invert(52%) sepia(94%) saturate(2602%) hue-rotate(1deg) brightness(103%) contrast(105%)" />
+                    <Text fontSize="16px" fontWeight="800" color="#1f2937">Agregar ejercicio al día</Text>
+                  </HStack>
+                </HStack>
+              </Box>
+              <Box flex="1" overflowY="auto" px={3.5} py={4} pb="calc(1.5rem + env(safe-area-inset-bottom))">
+                <Stack spacing={3}>
+                  <InputGroup>
+                    <InputLeftElement pointerEvents="none">
+                      <SearchIcon color="gray.500" />
+                    </InputLeftElement>
+                    <Input placeholder="Buscar ejercicio..." value={routineCreateAddExerciseSearch} onChange={(e) => setRoutineCreateAddExerciseSearch(e.target.value)} bg="#eef3fb" borderColor="transparent" borderRadius="10px" h="42px" fontSize="13px" _hover={{ borderColor: "transparent" }} _focusVisible={{ borderColor: "#fb5a13", boxShadow: "0 0 0 1px #fb5a13", bg: "white" }} />
+                  </InputGroup>
+                  <Stack ref={routineCreateAddExerciseListRef} spacing={2} overflowY="auto" pr={1} onWheel={handleRoutineCreateAddExerciseListWheel} sx={{ overscrollBehaviorY: "contain" }}>
+                    {exercises
+                      .filter((exercise) => {
+                        const term = routineCreateAddExerciseSearch.trim().toLowerCase();
+                        if (!term) return true;
+                        return (
+                          exercise.name.toLowerCase().includes(term) ||
+                          String(exercise.arrows_count).includes(term) ||
+                          String(exercise.distance_m).includes(term)
+                        );
+                      })
+                      .filter((_exercise) => Boolean(routineCreateAddExerciseDayKey))
+                      .map((exercise) => (
+                        <Box key={`create-day-add-${exercise.id}`} bg="white" borderWidth="1px" borderColor="#e5e7eb" borderRadius="12px" p={3.5} boxShadow="0 10px 24px rgba(15, 23, 42, 0.04)">
+                          <Stack spacing={3}>
+                            <Stack spacing={0.5}>
+                              <Text fontSize="sm" color="gray.800" fontWeight="600">{exercise.name}</Text>
+                              <Text fontSize="xs" color="gray.500">Flechas: {exercise.arrows_count} | Distancia: {Number(exercise.distance_m)} m</Text>
+                            </Stack>
+                            <Button size="sm" variant="outline" borderColor="gray.300" borderRadius="10px" bg="white" _hover={{ bg: "gray.50", borderColor: "gray.400" }} onClick={() => routineCreateAddExerciseDayKey && addExerciseToRoutineSummaryDay(routineCreateAddExerciseDayKey, exercise.id)}>
+                              Agregar
+                            </Button>
+                          </Stack>
+                        </Box>
+                      ))}
+                  </Stack>
+                </Stack>
+              </Box>
+            </Flex>
+          </Box>
+        )}
+        <Modal isOpen={routineCreateAddExerciseModalOpen && isDesktopViewport} onClose={closeRoutineCreateAddExerciseModal} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "620px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between">
                 <Text fontWeight="700" color="gray.900">Agregar ejercicio al día</Text>
-                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => setRoutineCreateAddExerciseModalOpen(false)}>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={closeRoutineCreateAddExerciseModal}>
                   ×
                 </Button>
               </HStack>
@@ -4381,22 +5946,149 @@ function App() {
               </Stack>
             </ModalBody>
             <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
-              <Button variant="outline" borderColor="gray.300" bg="white" _hover={{ bg: "gray.50" }} onClick={() => setRoutineCreateAddExerciseModalOpen(false)}>
+              <Button variant="outline" borderColor="gray.300" bg="white" _hover={{ bg: "gray.50" }} onClick={closeRoutineCreateAddExerciseModal}>
                 Cancelar
               </Button>
             </ModalFooter>
           </ModalContent>
         </Modal>
+        {routineCreateEditExerciseModalOpen && !isDesktopViewport && (
+          <Box position="fixed" inset={0} zIndex={1400} bg="#f6f7fb">
+            <Flex direction="column" h="100%">
+              <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" px={4} pt="calc(0.75rem + env(safe-area-inset-top))" pb={3}>
+                <HStack justify="space-between" align="center" spacing={3}>
+                  <Button
+                    variant="ghost"
+                    minW="auto"
+                    px={1}
+                    color="#334155"
+                    _hover={{ bg: "transparent", color: "#0f172a" }}
+                    _active={{ bg: "transparent", color: "#0f172a" }}
+                    onClick={closeRoutineCreateEditExercise}
+                    aria-label="Volver"
+                  >
+                    <Box as="svg" viewBox="0 0 24 24" boxSize="20px" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m15 18-6-6 6-6" />
+                    </Box>
+                  </Button>
+                  <HStack spacing={2} flex="1" justify="center" mr="28px">
+                    <Image src={editIconUrl} alt="" boxSize="16px" />
+                    <Text fontSize="16px" fontWeight="800" color="#1f2937">Editar ejercicio</Text>
+                  </HStack>
+                </HStack>
+                <Text mt={2} fontSize="12px" color="#667085">
+                  Ajusta los valores del ejercicio dentro del resumen de la rutina.
+                </Text>
+              </Box>
+
+              <Box flex="1" overflowY="auto" px={3.5} py={4} pb="112px">
+                <Stack spacing={4}>
+                  <Box bg="white" borderWidth="1px" borderColor="#e5e7eb" borderRadius="16px" p={4} boxShadow="0 10px 24px rgba(15, 23, 42, 0.04)">
+                    <Stack spacing={4}>
+                      <SimpleGrid columns={{ base: 1, sm: 3 }} spacing={3}>
+                        <FormControl>
+                          <FormLabel color="gray.700" fontSize="sm">Rondas</FormLabel>
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            min={1}
+                            step={1}
+                            value={routineCreateEditRounds}
+                            onChange={(e) => setRoutineCreateEditRounds(normalizeInt(e.target.value))}
+                            onKeyDown={(e) => blockInvalidKeys(e, false)}
+                            onBeforeInput={handleBeforeInputInt}
+                            onPaste={handlePasteInt}
+                            borderColor="gray.300"
+                            borderRadius="8px"
+                            _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                          />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel color="gray.700" fontSize="sm">Flechas por ronda</FormLabel>
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            min={0}
+                            step={1}
+                            value={routineCreateEditArrows}
+                            onChange={(e) => setRoutineCreateEditArrows(normalizeInt(e.target.value))}
+                            onKeyDown={(e) => blockInvalidKeys(e, false)}
+                            onBeforeInput={handleBeforeInputInt}
+                            onPaste={handlePasteInt}
+                            borderColor="gray.300"
+                            borderRadius="8px"
+                            _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                          />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel color="gray.700" fontSize="sm">Distancia (m)</FormLabel>
+                          <Input
+                            type="number"
+                            inputMode="decimal"
+                            min={0}
+                            step={0.5}
+                            value={routineCreateEditDistance}
+                            onChange={(e) => setRoutineCreateEditDistance(normalizeFloat(e.target.value))}
+                            onKeyDown={(e) => blockInvalidKeys(e, true)}
+                            onBeforeInput={handleBeforeInputFloat}
+                            onPaste={handlePasteFloat}
+                            borderColor="gray.300"
+                            borderRadius="8px"
+                            _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                          />
+                        </FormControl>
+                      </SimpleGrid>
+                      <FormControl>
+                        <FormLabel color="gray.700" fontSize="sm">Descripción</FormLabel>
+                        <Textarea
+                          value={routineCreateEditDescription}
+                          onChange={(e) => setRoutineCreateEditDescription(e.target.value)}
+                          minH="120px"
+                          resize="vertical"
+                          borderColor="gray.300"
+                          borderRadius="8px"
+                          _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                        />
+                      </FormControl>
+                    </Stack>
+                  </Box>
+                </Stack>
+              </Box>
+
+              <Box position="fixed" left={0} right={0} bottom={0} zIndex={1401} bg="white" borderTopWidth="1px" borderColor="gray.200" px={4} pt={3} pb="calc(0.9rem + env(safe-area-inset-bottom))" boxShadow="0 -10px 24px rgba(15, 23, 42, 0.08)">
+                <HStack spacing={3}>
+                  <Button
+                    flex="1"
+                    bg="white"
+                    color="black"
+                    borderColor="gray.300"
+                    borderWidth="1px"
+                    _hover={{ bg: "gray.100" }}
+                    onClick={closeRoutineCreateEditExercise}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    flex="1"
+                    bg="#f97316"
+                    color="white"
+                    _hover={{ bg: "#ea580c" }}
+                    _active={{ bg: "#c2410c" }}
+                    isDisabled={routineCreateEditRounds === "" || routineCreateEditArrows === "" || routineCreateEditDistance === ""}
+                    onClick={saveRoutineCreateEditExercise}
+                  >
+                    Guardar
+                  </Button>
+                </HStack>
+              </Box>
+            </Flex>
+          </Box>
+        )}
         <Modal
-          isOpen={routineCreateEditExerciseModalOpen}
-          onClose={() => {
-            setRoutineCreateEditExerciseModalOpen(false);
-            setRoutineCreateEditTarget(null);
-            setRoutineCreateEditRounds("");
-            setRoutineCreateEditArrows("");
-            setRoutineCreateEditDistance("");
-            setRoutineCreateEditDescription("");
-          }}
+          isOpen={routineCreateEditExerciseModalOpen && isDesktopViewport}
+          onClose={closeRoutineCreateEditExercise}
           isCentered
         >
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
@@ -4409,14 +6101,7 @@ function App() {
                   size="sm"
                   color="gray.400"
                   _hover={{ bg: "gray.100", color: "gray.700" }}
-                  onClick={() => {
-                    setRoutineCreateEditExerciseModalOpen(false);
-                    setRoutineCreateEditTarget(null);
-                    setRoutineCreateEditRounds("");
-                    setRoutineCreateEditArrows("");
-                    setRoutineCreateEditDistance("");
-                    setRoutineCreateEditDescription("");
-                  }}
+                  onClick={closeRoutineCreateEditExercise}
                 >
                   ×
                 </Button>
@@ -4501,14 +6186,7 @@ function App() {
                   borderColor="gray.300"
                   borderWidth="1px"
                   _hover={{ bg: "gray.100" }}
-                  onClick={() => {
-                    setRoutineCreateEditExerciseModalOpen(false);
-                    setRoutineCreateEditTarget(null);
-                    setRoutineCreateEditRounds("");
-                    setRoutineCreateEditArrows("");
-                    setRoutineCreateEditDistance("");
-                    setRoutineCreateEditDescription("");
-                  }}
+                  onClick={closeRoutineCreateEditExercise}
                 >
                   Cancelar
                 </Button>
@@ -4526,7 +6204,25 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={deleteRoutineDayConfirmOpen} onClose={() => setDeleteRoutineDayConfirmOpen(false)} isCentered>
+        {!isDesktopViewport && (
+          <MobileDangerConfirmSheet
+            isOpen={deleteRoutineDayConfirmOpen}
+            title="¿Eliminar día?"
+            message={
+              <>
+                Se eliminará{" "}
+                <Box as="span" fontWeight="700" color="#334155">
+                  {deleteRoutineDayTargetNumber ? `Día ${deleteRoutineDayTargetNumber}` : "este día"}
+                </Box>{" "}
+                de la rutina. Esta acción no se puede deshacer.
+              </>
+            }
+            confirmLabel="Eliminar día"
+            onConfirm={confirmDeleteRoutineDay}
+            onClose={() => setDeleteRoutineDayConfirmOpen(false)}
+          />
+        )}
+        <Modal isOpen={deleteRoutineDayConfirmOpen && isDesktopViewport} onClose={() => setDeleteRoutineDayConfirmOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
@@ -4585,130 +6281,90 @@ function App() {
             </ModalBody>
           </ModalContent>
         </Modal>
-        <Modal isOpen={createStudentModalOpen} onClose={() => setCreateStudentModalOpen(false)} isCentered>
+        {createStudentModalOpen && !isDesktopViewport && (
+          <Box
+            position="fixed"
+            inset={0}
+            zIndex={1400}
+            bg="#f6f7fb"
+            animation={`${isClosingCreateStudentMobileScreen ? createStudentMobileSlideOut : createStudentMobileSlideIn} ${CREATE_STUDENT_MOBILE_ANIMATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`}
+          >
+            <Flex direction="column" h="100%">
+              <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" px={4} pt="calc(0.75rem + env(safe-area-inset-top))" pb={3}>
+                <HStack justify="space-between" align="center" spacing={3}>
+                  <Button
+                    variant="ghost"
+                    minW="auto"
+                    px={1}
+                    color="#334155"
+                    _hover={{ bg: "transparent", color: "#0f172a" }}
+                    _active={{ bg: "transparent", color: "#0f172a" }}
+                    onClick={closeCreateStudentModal}
+                    aria-label="Volver"
+                  >
+                    <Box as="svg" viewBox="0 0 24 24" boxSize="20px" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m15 18-6-6 6-6" />
+                    </Box>
+                  </Button>
+                  <HStack spacing={2} flex="1" justify="center" mr="28px">
+                    <Image src={userPlusIconUrl} alt="" boxSize="16px" filter="brightness(0) saturate(100%) invert(52%) sepia(94%) saturate(2602%) hue-rotate(1deg) brightness(103%) contrast(105%)" />
+                    <Text fontSize="16px" fontWeight="800" color="#1f2937">Crear nuevo deportista</Text>
+                  </HStack>
+                </HStack>
+                <Text mt={2} fontSize="12px" color="#667085">
+                  Crea la cuenta y registra al deportista en un solo flujo.
+                </Text>
+              </Box>
+
+              <Box flex="1" overflowY="auto" px={3.5} py={4} pb="112px">
+                {createStudentFormFields}
+              </Box>
+
+              <Box position="fixed" left={0} right={0} bottom={0} zIndex={1401} bg="white" borderTopWidth="1px" borderColor="gray.200" px={4} pt={3} pb="calc(0.9rem + env(safe-area-inset-bottom))" boxShadow="0 -10px 24px rgba(15, 23, 42, 0.08)">
+                <HStack spacing={3}>
+                  <Button flex="1" bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={closeCreateStudentModal}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    flex="1"
+                    bg="#f97316"
+                    color="white"
+                    _hover={{ bg: "#ea580c" }}
+                    _active={{ bg: "#c2410c" }}
+                    isLoading={createStudentLoading}
+                    isDisabled={!createStudentCanSave}
+                    onClick={handleCreateStudentSave}
+                  >
+                    Guardar
+                  </Button>
+                </HStack>
+              </Box>
+            </Flex>
+          </Box>
+        )}
+        <Modal isOpen={createStudentModalOpen && isDesktopViewport} onClose={closeCreateStudentModal} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between" align="flex-start">
                 <Stack spacing={1}>
                   <HStack spacing={2}>
-                    <Box
-                      as="svg"
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      boxSize="16px"
-                      fill="none"
-                      stroke="#f97316"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                      <circle cx="9" cy="7" r="4" />
-                      <line x1="19" x2="19" y1="8" y2="14" />
-                      <line x1="22" x2="16" y1="11" y2="11" />
-                    </Box>
-                    <Text fontWeight="700" color="gray.900">Nuevo Deportista</Text>
+                    <Image src={userPlusIconUrl} alt="" boxSize="16px" filter="brightness(0) saturate(100%) invert(52%) sepia(94%) saturate(2602%) hue-rotate(1deg) brightness(103%) contrast(105%)" />
+                    <Text fontWeight="700" color="gray.900">Crear nuevo deportista</Text>
                   </HStack>
-                  <Text fontSize="sm" color="gray.500">Ingresa los datos del nuevo estudiante de arquería.</Text>
+                  <Text fontSize="sm" color="gray.500">Ingresa la cuenta y los datos del nuevo estudiante de arquería.</Text>
                 </Stack>
-                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => setCreateStudentModalOpen(false)}>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={closeCreateStudentModal}>
                   ×
                 </Button>
               </HStack>
             </ModalHeader>
             <ModalBody maxH="70vh" overflowY="auto" py={5}>
-              <Stack spacing={4}>
-                <FormControl>
-                  <FormLabel color="gray.700" fontSize="sm">Nombre completo</FormLabel>
-                  <Input
-                    value={studentFullName}
-                    onChange={(e) => setStudentFullName(e.target.value)}
-                    placeholder="Ej. Juan Pérez"
-                    borderColor="gray.300"
-                    borderRadius="8px"
-                    _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                  />
-                </FormControl>
-                <SimpleGrid columns={2} spacing={3}>
-                  <FormControl>
-                    <FormLabel color="gray.700" fontSize="sm">DNI</FormLabel>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      value={studentDocumentNumber}
-                      onChange={(e) => setStudentDocumentNumber(e.target.value.replace(/\D+/g, ""))}
-                      onBeforeInput={handleBeforeInputInt}
-                      onPaste={handlePasteInt}
-                      placeholder="12345678"
-                      borderColor="gray.300"
-                      borderRadius="8px"
-                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                    />
-                  </FormControl>
-                  <FormControl>
-                    <FormLabel color="gray.700" fontSize="sm">Contacto</FormLabel>
-                    <Input
-                      value={studentContact}
-                      onChange={(e) => setStudentContact(e.target.value)}
-                      placeholder="correo@ejemplo.com"
-                      borderColor="gray.300"
-                      borderRadius="8px"
-                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                    />
-                  </FormControl>
-                </SimpleGrid>
-                <SimpleGrid columns={2} spacing={3}>
-                  <FormControl>
-                    <FormLabel color="gray.700" fontSize="sm">Libras del arco</FormLabel>
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      min={0}
-                      step={0.5}
-                      value={studentBowPounds}
-                      onChange={(e) => setStudentBowPounds(normalizeFloat(e.target.value))}
-                      onKeyDown={(e) => blockInvalidKeys(e, true)}
-                      onBeforeInput={handleBeforeInputFloat}
-                      onPaste={handlePasteFloat}
-                      placeholder="Ej. 24"
-                      borderColor="gray.300"
-                      borderRadius="8px"
-                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                    />
-                  </FormControl>
-                  <FormControl>
-                    <FormLabel color="gray.700" fontSize="sm">Flechas disponibles</FormLabel>
-                    <Input
-                      type="number"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      min={0}
-                      step={1}
-                      value={studentArrowsAvailable}
-                      onChange={(e) => setStudentArrowsAvailable(normalizeInt(e.target.value))}
-                      onKeyDown={(e) => blockInvalidKeys(e, false)}
-                      onBeforeInput={handleBeforeInputInt}
-                      onPaste={handlePasteInt}
-                      placeholder="Ej. 6"
-                      borderColor="gray.300"
-                      borderRadius="8px"
-                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                    />
-                  </FormControl>
-                </SimpleGrid>
-                {createStudentError && (
-                  <Alert status="error" borderRadius="md">
-                    <AlertIcon />
-                    {createStudentError}
-                  </Alert>
-                )}
-              </Stack>
+              {createStudentFormFields}
             </ModalBody>
             <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
               <HStack spacing={3}>
-                <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={() => setCreateStudentModalOpen(false)}>
+                <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={closeCreateStudentModal}>
                   Cancelar
                 </Button>
                 <Button
@@ -4717,7 +6373,7 @@ function App() {
                   _hover={{ bg: "#ea580c" }}
                   _active={{ bg: "#c2410c" }}
                   isLoading={createStudentLoading}
-                  isDisabled={!studentFullName || !studentDocumentNumber}
+                  isDisabled={!createStudentCanSave}
                   onClick={handleCreateStudentSave}
                 >
                   Guardar
@@ -4726,110 +6382,90 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={editStudentModalOpen} onClose={() => setEditStudentModalOpen(false)} isCentered>
+        {editStudentModalOpen && !isDesktopViewport && (
+          <Box
+            position="fixed"
+            inset={0}
+            zIndex={1400}
+            bg="#f6f7fb"
+            animation={`${isClosingEditStudentMobileScreen ? createStudentMobileSlideOut : createStudentMobileSlideIn} ${CREATE_STUDENT_MOBILE_ANIMATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`}
+          >
+            <Flex direction="column" h="100%">
+              <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" px={4} pt="calc(0.75rem + env(safe-area-inset-top))" pb={3}>
+                <HStack justify="space-between" align="center" spacing={3}>
+                  <Button
+                    variant="ghost"
+                    minW="auto"
+                    px={1}
+                    color="#334155"
+                    _hover={{ bg: "transparent", color: "#0f172a" }}
+                    _active={{ bg: "transparent", color: "#0f172a" }}
+                    onClick={closeEditStudentModal}
+                    aria-label="Volver"
+                  >
+                    <Box as="svg" viewBox="0 0 24 24" boxSize="20px" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m15 18-6-6 6-6" />
+                    </Box>
+                  </Button>
+                  <HStack spacing={2} flex="1" justify="center" mr="28px">
+                    <Image src={userPlusIconUrl} alt="" boxSize="16px" filter="brightness(0) saturate(100%) invert(52%) sepia(94%) saturate(2602%) hue-rotate(1deg) brightness(103%) contrast(105%)" />
+                    <Text fontSize="16px" fontWeight="800" color="#1f2937">Editar deportista</Text>
+                  </HStack>
+                </HStack>
+                <Text mt={2} fontSize="12px" color="#667085">
+                  Actualiza la información del deportista desde una vista completa.
+                </Text>
+              </Box>
+
+              <Box flex="1" overflowY="auto" px={3.5} py={4} pb="112px">
+                {editStudentFormFields}
+              </Box>
+
+              <Box position="fixed" left={0} right={0} bottom={0} zIndex={1401} bg="white" borderTopWidth="1px" borderColor="gray.200" px={4} pt={3} pb="calc(0.9rem + env(safe-area-inset-bottom))" boxShadow="0 -10px 24px rgba(15, 23, 42, 0.08)">
+                <HStack spacing={3}>
+                  <Button flex="1" bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={closeEditStudentModal}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    flex="1"
+                    bg="#f97316"
+                    color="white"
+                    _hover={{ bg: "#ea580c" }}
+                    _active={{ bg: "#c2410c" }}
+                    isLoading={editStudentLoading}
+                    isDisabled={!editStudentCanSave}
+                    onClick={handleEditStudentSave}
+                  >
+                    Guardar
+                  </Button>
+                </HStack>
+              </Box>
+            </Flex>
+          </Box>
+        )}
+        <Modal isOpen={editStudentModalOpen && isDesktopViewport} onClose={closeEditStudentModal} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between" align="flex-start">
                 <Stack spacing={1}>
                   <HStack spacing={2}>
-                    <Box color="#f97316" fontSize="16px">◎</Box>
+                    <Image src={userPlusIconUrl} alt="" boxSize="16px" filter="brightness(0) saturate(100%) invert(52%) sepia(94%) saturate(2602%) hue-rotate(1deg) brightness(103%) contrast(105%)" />
                     <Text fontWeight="700" color="gray.900">Editar Deportista</Text>
                   </HStack>
                   <Text fontSize="sm" color="gray.500">Actualiza los datos del estudiante.</Text>
                 </Stack>
-                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => setEditStudentModalOpen(false)}>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={closeEditStudentModal}>
                   ×
                 </Button>
               </HStack>
             </ModalHeader>
             <ModalBody maxH="70vh" overflowY="auto" py={5}>
-              <Stack spacing={4}>
-                <FormControl>
-                  <FormLabel color="gray.700" fontSize="sm">Nombre completo</FormLabel>
-                  <Input
-                    value={editStudentFullName}
-                    onChange={(e) => setEditStudentFullName(e.target.value)}
-                    borderColor="gray.300"
-                    borderRadius="8px"
-                    _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                  />
-                </FormControl>
-                <SimpleGrid columns={2} spacing={3}>
-                  <FormControl>
-                    <FormLabel color="gray.700" fontSize="sm">DNI</FormLabel>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      value={editStudentDocumentNumber}
-                      onChange={(e) => setEditStudentDocumentNumber(e.target.value.replace(/\D+/g, ""))}
-                      onBeforeInput={handleBeforeInputInt}
-                      onPaste={handlePasteInt}
-                      borderColor="gray.300"
-                      borderRadius="8px"
-                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                    />
-                  </FormControl>
-                  <FormControl>
-                    <FormLabel color="gray.700" fontSize="sm">Contacto</FormLabel>
-                    <Input
-                      value={editStudentContact}
-                      onChange={(e) => setEditStudentContact(e.target.value)}
-                      borderColor="gray.300"
-                      borderRadius="8px"
-                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                    />
-                  </FormControl>
-                </SimpleGrid>
-                <SimpleGrid columns={2} spacing={3}>
-                  <FormControl>
-                    <FormLabel color="gray.700" fontSize="sm">Libras del arco</FormLabel>
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      min={0}
-                      step={0.5}
-                      value={editStudentBowPounds}
-                      onChange={(e) => setEditStudentBowPounds(normalizeFloat(e.target.value))}
-                      onKeyDown={(e) => blockInvalidKeys(e, true)}
-                      onBeforeInput={handleBeforeInputFloat}
-                      onPaste={handlePasteFloat}
-                      borderColor="gray.300"
-                      borderRadius="8px"
-                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                    />
-                  </FormControl>
-                  <FormControl>
-                    <FormLabel color="gray.700" fontSize="sm">Flechas disponibles</FormLabel>
-                    <Input
-                      type="number"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      min={0}
-                      step={1}
-                      value={editStudentArrowsAvailable}
-                      onChange={(e) => setEditStudentArrowsAvailable(normalizeInt(e.target.value))}
-                      onKeyDown={(e) => blockInvalidKeys(e, false)}
-                      onBeforeInput={handleBeforeInputInt}
-                      onPaste={handlePasteInt}
-                      borderColor="gray.300"
-                      borderRadius="8px"
-                      _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
-                    />
-                  </FormControl>
-                </SimpleGrid>
-                {editStudentError && (
-                  <Alert status="error" borderRadius="md">
-                    <AlertIcon />
-                    {editStudentError}
-                  </Alert>
-                )}
-              </Stack>
+              {editStudentFormFields}
             </ModalBody>
             <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
               <HStack spacing={3}>
-                <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={() => setEditStudentModalOpen(false)}>
+                <Button bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={closeEditStudentModal}>
                   Cancelar
                 </Button>
                 <Button
@@ -4838,7 +6474,7 @@ function App() {
                   _hover={{ bg: "#ea580c" }}
                   _active={{ bg: "#c2410c" }}
                   isLoading={editStudentLoading}
-                  isDisabled={!editStudentFullName || !editStudentDocumentNumber}
+                  isDisabled={!editStudentCanSave}
                   onClick={handleEditStudentSave}
                 >
                   Guardar
@@ -4847,16 +6483,176 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
+        {studentHistoryModalOpen && !isDesktopViewport && (
+          <Box position="fixed" inset={0} zIndex={1400} bg="#f6f7fb">
+            <Flex direction="column" h="100%">
+              <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" px={4} pt="calc(0.75rem + env(safe-area-inset-top))" pb={3}>
+                <HStack justify="space-between" align="center" spacing={3}>
+                  <Button
+                    variant="ghost"
+                    minW="auto"
+                    px={1}
+                    color="#334155"
+                    _hover={{ bg: "transparent", color: "#0f172a" }}
+                    _active={{ bg: "transparent", color: "#0f172a" }}
+                    onClick={closeStudentHistoryModal}
+                    aria-label="Volver"
+                  >
+                    <Box as="svg" viewBox="0 0 24 24" boxSize="20px" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m15 18-6-6 6-6" />
+                    </Box>
+                  </Button>
+                  <Stack spacing={0} flex="1" align="center" mr="28px">
+                    <Text fontSize="16px" fontWeight="800" color="#1f2937">Historial del deportista</Text>
+                    <Text fontSize="11px" color="#667085" textAlign="center">
+                      {studentHistoryTarget ? `${studentHistoryTarget.full_name} · DNI ${studentHistoryTarget.document_number}` : ""}
+                    </Text>
+                  </Stack>
+                </HStack>
+              </Box>
+
+              <Box flex="1" overflowY="auto" px={3.5} py={4} pb="calc(1.5rem + env(safe-area-inset-bottom))">
+                <Stack spacing={4}>
+                  <InputGroup>
+                    <InputLeftElement pointerEvents="none" color="#334155">
+                      <SearchIcon boxSize={3.5} />
+                    </InputLeftElement>
+                    <Input
+                      value={studentHistorySearch}
+                      onChange={(e) => setStudentHistorySearch(e.target.value)}
+                      placeholder="Buscar por rutina, objetivo o notas"
+                      bg="#eef3fb"
+                      borderColor="transparent"
+                      borderRadius="10px"
+                      h="42px"
+                      fontSize="13px"
+                      _hover={{ borderColor: "transparent" }}
+                      _focusVisible={{ borderColor: "#fb5a13", boxShadow: "0 0 0 1px #fb5a13", bg: "white" }}
+                    />
+                  </InputGroup>
+                  {studentHistoryLoading ? (
+                    <HStack py={6} justify="center">
+                      <Spinner size="sm" />
+                      <Text color="gray.500" fontSize="sm">Cargando historial...</Text>
+                    </HStack>
+                  ) : (
+                    <Stack spacing={3}>
+                      {filteredStudentHistoryItems.map((item) => {
+                        const isExpanded = expandedHistoryId === item.id;
+                        const snapshot = parseHistorySnapshot(item.snapshot_json);
+                        const days = (Array.isArray(snapshot?.days) ? snapshot.days : [])
+                          .filter((day): day is HistorySnapshotDay => Boolean(day) && typeof day === "object")
+                          .map((day, idx) => ({
+                            day_number: Number(day.day_number ?? idx + 1),
+                            name: day.name ?? null,
+                            label: day.label ?? null,
+                            exercises: Array.isArray(day.exercises) ? day.exercises : [],
+                            items: Array.isArray(day.items) ? day.items : [],
+                          }));
+                        return (
+                          <Box key={item.id} bg="white" borderWidth="1px" borderColor="#e5e7eb" borderRadius="12px" overflow="hidden" boxShadow="0 10px 24px rgba(15, 23, 42, 0.04)">
+                            <Box p={4} cursor="pointer" _hover={{ bg: "#f8fafc" }} onClick={() => setExpandedHistoryId((prev) => (prev === item.id ? null : item.id))}>
+                              <Stack spacing={3}>
+                                <HStack justify="space-between" align="start" spacing={3}>
+                                  <Stack spacing={1} minW={0}>
+                                    <Text fontWeight="800" color="#1f2937" noOfLines={2}>{getHistoryRoutineDisplayName(item.routine_name)}</Text>
+                                    <Text fontSize="12px" color="#667085">
+                                      {formatDateEs(item.start_date)} a {formatDateEs(item.end_date)}
+                                    </Text>
+                                    <Text fontSize="12px" color="#475467">Objetivo: {item.objective || "-"}</Text>
+                                  </Stack>
+                                  <Box as="span" color="#92400e" fontSize="22px" lineHeight="1" transform={isExpanded ? "rotate(90deg)" : "rotate(0deg)"} transition="transform 0.18s ease">›</Box>
+                                </HStack>
+                                <HStack justify="space-between" align="center" spacing={3}>
+                                  <Tag size="sm" borderRadius="full" bg="gray.100" color="gray.700">
+                                    Flechas: {item.weekly_total_arrows}
+                                  </Tag>
+                                  <Button
+                                    size="xs"
+                                    variant="outline"
+                                    borderColor="gray.300"
+                                    color="gray.700"
+                                    _hover={{ bg: "gray.50", borderColor: "gray.400" }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void handleExportHistoryPdf(item);
+                                    }}
+                                    isLoading={studentHistoryExportLoadingId === item.id}
+                                    isDisabled={studentHistoryExportLoadingId !== null && studentHistoryExportLoadingId !== item.id}
+                                    aria-label="Exportar PDF de historial"
+                                  >
+                                    <HStack spacing={1}>
+                                      <Box as="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" boxSize="14px" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M12 17V3" />
+                                        <path d="m6 11 6 6 6-6" />
+                                        <path d="M19 21H5" />
+                                      </Box>
+                                      <Text fontSize="xs" fontWeight="600">PDF</Text>
+                                    </HStack>
+                                  </Button>
+                                </HStack>
+                              </Stack>
+                            </Box>
+                            <Collapse in={isExpanded} animateOpacity>
+                              <Box px={4} pb={4} borderTopWidth="1px" borderColor="gray.100">
+                                <Stack spacing={3} pt={3}>
+                                  {item.professor_notes && (
+                                    <Box>
+                                      <Text fontSize="sm" fontWeight="600" color="gray.800">Notas del profesor</Text>
+                                      <Text fontSize="sm" color="gray.600" whiteSpace="pre-wrap">{item.professor_notes}</Text>
+                                    </Box>
+                                  )}
+                                  {item.student_observations && (
+                                    <Box>
+                                      <Text fontSize="sm" fontWeight="600" color="gray.800">Observaciones del deportista</Text>
+                                      <Text fontSize="sm" color="gray.600" whiteSpace="pre-wrap">{item.student_observations}</Text>
+                                    </Box>
+                                  )}
+                                  {!!days.length && (
+                                    <Stack spacing={2}>
+                                      <Text fontSize="sm" fontWeight="600" color="gray.800">Días de la rutina</Text>
+                                      {days.map((day) => (
+                                        <Box key={`history-day-${item.id}-${day.day_number}`} pl={3} borderLeft="2px solid" borderColor="gray.200">
+                                          <Text fontSize="sm" fontWeight="600" color="gray.700">
+                                            {day.label || day.name || `Día ${day.day_number}`}
+                                          </Text>
+                                          <Stack as="ul" spacing={1} mt={1}>
+                                            {getHistoryDayExerciseNames(day).map((exerciseName, idx) => (
+                                              <HStack as="li" key={`history-day-${item.id}-${day.day_number}-ex-${idx}`} align="start" spacing={2}>
+                                                <Box w="5px" h="5px" mt="7px" borderRadius="full" bg="orange.400" flexShrink={0} />
+                                                <Text fontSize="sm" color="gray.600">{exerciseName}</Text>
+                                              </HStack>
+                                            ))}
+                                          </Stack>
+                                        </Box>
+                                      ))}
+                                    </Stack>
+                                  )}
+                                </Stack>
+                              </Box>
+                            </Collapse>
+                          </Box>
+                        );
+                      })}
+                      {!filteredStudentHistoryItems.length && !studentHistoryError && (
+                        <Text color="gray.600" textAlign="center" py={6}>No hay rutinas en historial para este deportista.</Text>
+                      )}
+                    </Stack>
+                  )}
+                  {studentHistoryError && (
+                    <Alert status="error" borderRadius="md">
+                      <AlertIcon />
+                      {studentHistoryError}
+                    </Alert>
+                  )}
+                </Stack>
+              </Box>
+            </Flex>
+          </Box>
+        )}
         <Modal
-          isOpen={studentHistoryModalOpen}
-          onClose={() => {
-            setStudentHistoryModalOpen(false);
-            setStudentHistoryTarget(null);
-            setStudentHistorySearch("");
-            setStudentHistoryError(null);
-            setStudentHistoryItems([]);
-            setExpandedHistoryId(null);
-          }}
+          isOpen={studentHistoryModalOpen && isDesktopViewport}
+          onClose={closeStudentHistoryModal}
           isCentered
         >
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
@@ -4874,14 +6670,7 @@ function App() {
                   size="sm"
                   color="gray.400"
                   _hover={{ bg: "gray.100", color: "gray.700" }}
-                  onClick={() => {
-                    setStudentHistoryModalOpen(false);
-                    setStudentHistoryTarget(null);
-                    setStudentHistorySearch("");
-                    setStudentHistoryError(null);
-                    setStudentHistoryItems([]);
-                    setExpandedHistoryId(null);
-                  }}
+                  onClick={closeStudentHistoryModal}
                 >
                   ×
                 </Button>
@@ -5047,14 +6836,7 @@ function App() {
                 borderColor="gray.300"
                 borderWidth="1px"
                 _hover={{ bg: "gray.100" }}
-                onClick={() => {
-                  setStudentHistoryModalOpen(false);
-                  setStudentHistoryTarget(null);
-                  setStudentHistorySearch("");
-                  setStudentHistoryError(null);
-                  setStudentHistoryItems([]);
-                  setExpandedHistoryId(null);
-                }}
+                onClick={closeStudentHistoryModal}
               >
                 Cerrar
               </Button>
@@ -5217,6 +6999,8 @@ function App() {
           handleAssignExistingRoutine={handleAssignExistingRoutine}
           assignRoutineLoading={assignRoutineLoading}
           setAssignRoutineStep={setAssignRoutineStep}
+          isAddExerciseDayModalOpen={addExerciseDayModalOpen}
+          isEditAssignExerciseModalOpen={editAssignExerciseModalOpen}
         />
         {false && (
         <Modal isOpen={assignRoutineModalOpen} onClose={closeAssignRoutineModal} isCentered>
@@ -5946,16 +7730,137 @@ function App() {
           </ModalContent>
         </Modal>
         )}
+        {editAssignExerciseModalOpen && !isDesktopViewport && (
+          <Box position="fixed" inset={0} zIndex={1400} bg="#f6f7fb">
+            <Flex direction="column" h="100%">
+              <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" px={4} pt="calc(0.75rem + env(safe-area-inset-top))" pb={3}>
+                <HStack justify="space-between" align="center" spacing={3}>
+                  <Button
+                    variant="ghost"
+                    minW="auto"
+                    px={1}
+                    color="#334155"
+                    _hover={{ bg: "transparent", color: "#0f172a" }}
+                    _active={{ bg: "transparent", color: "#0f172a" }}
+                    onClick={closeEditAssignExerciseModal}
+                    aria-label="Volver"
+                  >
+                    <Box as="svg" viewBox="0 0 24 24" boxSize="20px" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m15 18-6-6 6-6" />
+                    </Box>
+                  </Button>
+                  <HStack spacing={2} flex="1" justify="center" mr="28px">
+                    <Image src={editIconUrl} alt="" boxSize="16px" />
+                    <Text fontSize="16px" fontWeight="800" color="#1f2937">Editar ejercicio temporal</Text>
+                  </HStack>
+                </HStack>
+                <Text mt={2} fontSize="12px" color="#667085">
+                  Ajusta los valores del ejercicio dentro del resumen de la asignación.
+                </Text>
+              </Box>
+
+              <Box flex="1" overflowY="auto" px={3.5} py={4} pb="112px">
+                <Stack spacing={4}>
+                  <Box bg="white" borderWidth="1px" borderColor="#e5e7eb" borderRadius="16px" p={4} boxShadow="0 10px 24px rgba(15, 23, 42, 0.04)">
+                    <Stack spacing={4}>
+                      <SimpleGrid columns={{ base: 1, sm: 3 }} spacing={3}>
+                        <FormControl>
+                          <FormLabel color="gray.700" fontSize="sm">Rondas</FormLabel>
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            min={1}
+                            step={1}
+                            value={editAssignRounds}
+                            onChange={(e) => setEditAssignRounds(normalizeInt(e.target.value))}
+                            onKeyDown={(e) => blockInvalidKeys(e, false)}
+                            onBeforeInput={handleBeforeInputInt}
+                            onPaste={handlePasteInt}
+                            borderColor="gray.300"
+                            borderRadius="8px"
+                            _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                          />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel color="gray.700" fontSize="sm">Flechas por ronda</FormLabel>
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            min={0}
+                            step={1}
+                            value={editAssignArrows}
+                            onChange={(e) => setEditAssignArrows(normalizeInt(e.target.value))}
+                            onKeyDown={(e) => blockInvalidKeys(e, false)}
+                            onBeforeInput={handleBeforeInputInt}
+                            onPaste={handlePasteInt}
+                            borderColor="gray.300"
+                            borderRadius="8px"
+                            _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                          />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel color="gray.700" fontSize="sm">Distancia (m)</FormLabel>
+                          <Input
+                            type="number"
+                            inputMode="decimal"
+                            min={0}
+                            step={0.5}
+                            value={editAssignDistance}
+                            onChange={(e) => setEditAssignDistance(normalizeFloat(e.target.value))}
+                            onKeyDown={(e) => blockInvalidKeys(e, true)}
+                            onBeforeInput={handleBeforeInputFloat}
+                            onPaste={handlePasteFloat}
+                            borderColor="gray.300"
+                            borderRadius="8px"
+                            _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                          />
+                        </FormControl>
+                      </SimpleGrid>
+                      <FormControl>
+                        <FormLabel color="gray.700" fontSize="sm">Descripción</FormLabel>
+                        <Textarea
+                          value={editAssignDescription}
+                          onChange={(e) => setEditAssignDescription(e.target.value)}
+                          minH="120px"
+                          resize="vertical"
+                          borderColor="gray.300"
+                          borderRadius="8px"
+                          _hover={{ borderColor: "gray.500" }}
+                          _focusVisible={{ borderColor: "#f97316", boxShadow: "0 0 0 1px #f97316" }}
+                          fontSize="md"
+                        />
+                      </FormControl>
+                    </Stack>
+                  </Box>
+                </Stack>
+              </Box>
+
+              <Box position="fixed" left={0} right={0} bottom={0} zIndex={1401} bg="white" borderTopWidth="1px" borderColor="gray.200" px={4} pt={3} pb="calc(0.9rem + env(safe-area-inset-bottom))" boxShadow="0 -10px 24px rgba(15, 23, 42, 0.08)">
+                <HStack spacing={3}>
+                  <Button flex="1" bg="white" color="black" borderColor="gray.300" borderWidth="1px" _hover={{ bg: "gray.100" }} onClick={closeEditAssignExerciseModal}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    flex="1"
+                    bg="#f97316"
+                    color="white"
+                    _hover={{ bg: "#ea580c" }}
+                    _active={{ bg: "#c2410c" }}
+                    isDisabled={editAssignRounds === "" || editAssignArrows === "" || editAssignDistance === ""}
+                    onClick={saveEditAssignExercise}
+                  >
+                    Guardar
+                  </Button>
+                </HStack>
+              </Box>
+            </Flex>
+          </Box>
+        )}
         <Modal
-          isOpen={editAssignExerciseModalOpen}
-          onClose={() => {
-            setEditAssignExerciseModalOpen(false);
-            setEditAssignExerciseTarget(null);
-            setEditAssignRounds("");
-            setEditAssignArrows("");
-            setEditAssignDistance("");
-            setEditAssignDescription("");
-          }}
+          isOpen={editAssignExerciseModalOpen && isDesktopViewport}
+          onClose={closeEditAssignExerciseModal}
           isCentered
         >
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
@@ -5968,14 +7873,7 @@ function App() {
                   size="sm"
                   color="gray.400"
                   _hover={{ bg: "gray.100", color: "gray.700" }}
-                  onClick={() => {
-                    setEditAssignExerciseModalOpen(false);
-                    setEditAssignExerciseTarget(null);
-                    setEditAssignRounds("");
-                    setEditAssignArrows("");
-                    setEditAssignDistance("");
-                    setEditAssignDescription("");
-                  }}
+                  onClick={closeEditAssignExerciseModal}
                 >
                   ×
                 </Button>
@@ -6062,14 +7960,7 @@ function App() {
                   borderColor="gray.300"
                   borderWidth="1px"
                   _hover={{ bg: "gray.100" }}
-                  onClick={() => {
-                    setEditAssignExerciseModalOpen(false);
-                    setEditAssignExerciseTarget(null);
-                    setEditAssignRounds("");
-                    setEditAssignArrows("");
-                    setEditAssignDistance("");
-                    setEditAssignDescription("");
-                  }}
+                  onClick={closeEditAssignExerciseModal}
                 >
                   Cancelar
                 </Button>
@@ -6087,13 +7978,68 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={addExerciseDayModalOpen} onClose={() => setAddExerciseDayModalOpen(false)} isCentered>
+        {addExerciseDayModalOpen && !isDesktopViewport && (
+          <Box position="fixed" inset={0} zIndex={1400} bg="#f6f7fb">
+            <Flex direction="column" h="100%">
+              <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" px={4} pt="calc(0.75rem + env(safe-area-inset-top))" pb={3}>
+                <HStack justify="space-between" align="center" spacing={3}>
+                  <Button variant="ghost" minW="auto" px={1} color="#334155" _hover={{ bg: "transparent", color: "#0f172a" }} _active={{ bg: "transparent", color: "#0f172a" }} onClick={closeAddExerciseDayModal} aria-label="Volver">
+                    <Box as="svg" viewBox="0 0 24 24" boxSize="20px" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m15 18-6-6 6-6" />
+                    </Box>
+                  </Button>
+                  <HStack spacing={2} flex="1" justify="center" mr="28px">
+                    <Image src={bowIconUrl} alt="" boxSize="16px" filter="brightness(0) saturate(100%) invert(52%) sepia(94%) saturate(2602%) hue-rotate(1deg) brightness(103%) contrast(105%)" />
+                    <Text fontSize="16px" fontWeight="800" color="#1f2937">Agregar ejercicio al día</Text>
+                  </HStack>
+                </HStack>
+              </Box>
+              <Box flex="1" overflowY="auto" px={3.5} py={4} pb="calc(1.5rem + env(safe-area-inset-bottom))">
+                <Stack spacing={3}>
+                  <InputGroup>
+                    <InputLeftElement pointerEvents="none">
+                      <SearchIcon color="gray.500" />
+                    </InputLeftElement>
+                    <Input placeholder="Buscar ejercicio..." value={addExerciseSearch} onChange={(e) => setAddExerciseSearch(e.target.value)} bg="#eef3fb" borderColor="transparent" borderRadius="10px" h="42px" fontSize="13px" _hover={{ borderColor: "transparent" }} _focusVisible={{ borderColor: "#fb5a13", boxShadow: "0 0 0 1px #fb5a13", bg: "white" }} />
+                  </InputGroup>
+                  <Stack ref={addExerciseListRef} spacing={2} overflowY="auto" pr={1} onWheel={handleAddExerciseListWheel} sx={{ overscrollBehaviorY: "contain" }}>
+                    {exercises
+                      .filter((exercise) => {
+                        const term = addExerciseSearch.trim().toLowerCase();
+                        if (!term) return true;
+                        return (
+                          exercise.name.toLowerCase().includes(term) ||
+                          String(exercise.arrows_count).includes(term) ||
+                          String(exercise.distance_m).includes(term)
+                        );
+                      })
+                      .filter((_exercise) => Boolean(addExerciseTargetDayKey))
+                      .map((exercise) => (
+                        <Box key={`assign-day-add-${exercise.id}`} bg="white" borderWidth="1px" borderColor="#e5e7eb" borderRadius="12px" p={3.5} boxShadow="0 10px 24px rgba(15, 23, 42, 0.04)">
+                          <Stack spacing={3}>
+                            <Stack spacing={0.5}>
+                              <Text fontSize="sm" color="gray.800" fontWeight="600">{exercise.name}</Text>
+                              <Text fontSize="xs" color="gray.500">Flechas: {exercise.arrows_count} | Distancia: {Number(exercise.distance_m)} m</Text>
+                            </Stack>
+                            <Button size="sm" variant="outline" borderColor="gray.300" borderRadius="10px" bg="white" _hover={{ bg: "gray.50", borderColor: "gray.400" }} onClick={() => addExerciseTargetDayKey && addTemporaryExerciseToDay(addExerciseTargetDayKey, exercise.id)}>
+                              Agregar
+                            </Button>
+                          </Stack>
+                        </Box>
+                      ))}
+                  </Stack>
+                </Stack>
+              </Box>
+            </Flex>
+          </Box>
+        )}
+        <Modal isOpen={addExerciseDayModalOpen && isDesktopViewport} onClose={closeAddExerciseDayModal} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "620px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
               <HStack justify="space-between">
                 <Text fontWeight="700" color="gray.900">Agregar ejercicio al día</Text>
-                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => setAddExerciseDayModalOpen(false)}>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={closeAddExerciseDayModal}>
                   ×
                 </Button>
               </HStack>
@@ -6157,13 +8103,31 @@ function App() {
               </Stack>
             </ModalBody>
             <ModalFooter borderTopWidth="1px" borderColor="gray.200" py={3}>
-              <Button variant="outline" borderColor="gray.300" bg="white" _hover={{ bg: "gray.50" }} onClick={() => setAddExerciseDayModalOpen(false)}>
+              <Button variant="outline" borderColor="gray.300" bg="white" _hover={{ bg: "gray.50" }} onClick={closeAddExerciseDayModal}>
                 Cancelar
               </Button>
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={deleteAssignDayConfirmOpen} onClose={() => setDeleteAssignDayConfirmOpen(false)} isCentered>
+        {!isDesktopViewport && (
+          <MobileDangerConfirmSheet
+            isOpen={deleteAssignDayConfirmOpen}
+            title="¿Eliminar día?"
+            message={
+              <>
+                Se eliminará{" "}
+                <Box as="span" fontWeight="700" color="#334155">
+                  {deleteAssignDayTargetNumber ? `Día ${deleteAssignDayTargetNumber}` : "este día"}
+                </Box>{" "}
+                de la asignación temporal. Esta acción no se puede deshacer.
+              </>
+            }
+            confirmLabel="Eliminar día"
+            onConfirm={confirmDeleteAssignRoutineDay}
+            onClose={() => setDeleteAssignDayConfirmOpen(false)}
+          />
+        )}
+        <Modal isOpen={deleteAssignDayConfirmOpen && isDesktopViewport} onClose={() => setDeleteAssignDayConfirmOpen(false)} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
@@ -6222,7 +8186,99 @@ function App() {
             </ModalBody>
           </ModalContent>
         </Modal>
-        <Modal isOpen={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} isCentered>
+        {!isDesktopViewport && (
+          <MobileDangerConfirmSheet
+            isOpen={deleteModalOpen}
+            title="¿Eliminar ejercicio?"
+            message="Se eliminará este ejercicio de forma permanente. Esta acción no se puede deshacer."
+            confirmLabel="Eliminar ejercicio"
+            error={deleteError}
+            isLoading={deleteLoading}
+            onConfirm={handleDeleteConfirm}
+            onClose={() => {
+              setDeleteModalOpen(false);
+              setDeleteError(null);
+            }}
+          />
+        )}
+        {!isDesktopViewport && (
+          <MobileDangerConfirmSheet
+            isOpen={deleteRoutineModalOpen}
+            title="¿Eliminar rutina?"
+            message="Se eliminará esta rutina de forma permanente. Esta acción no se puede deshacer."
+            confirmLabel="Eliminar rutina"
+            error={deleteRoutineError}
+            isLoading={deleteRoutineLoading}
+            onConfirm={handleDeleteRoutineConfirm}
+            onClose={() => {
+              setDeleteRoutineModalOpen(false);
+              setDeleteRoutineError(null);
+            }}
+          />
+        )}
+        {!isDesktopViewport && (
+          <MobileDangerConfirmSheet
+            isOpen={deleteAssignedRoutineModalOpen}
+            title="¿Eliminar rutina asignada?"
+            message="Se eliminará la rutina activa asignada a este deportista. Esta acción no se puede deshacer."
+            confirmLabel="Eliminar rutina"
+            error={deleteAssignedRoutineError}
+            isLoading={deleteAssignedRoutineLoading}
+            onConfirm={handleDeleteAssignedRoutineConfirm}
+            onClose={() => {
+              setDeleteAssignedRoutineModalOpen(false);
+              setDeleteAssignedRoutineError(null);
+            }}
+          />
+        )}
+        {!isDesktopViewport && (
+          <MobileDangerConfirmSheet
+            isOpen={deactivateModalOpen}
+            title="¿Desactivar deportista?"
+            message={
+              <>
+                Se desactivará{" "}
+                <Box as="span" fontWeight="700" color="#334155">
+                  {deactivateStudent?.full_name || "este deportista"}
+                </Box>
+                . Esta acción no se puede deshacer.
+              </>
+            }
+            confirmLabel="Desactivar deportista"
+            error={deactivateError}
+            isLoading={deactivateLoading}
+            onConfirm={handleDeactivateConfirm}
+            onClose={() => {
+              setDeactivateModalOpen(false);
+              setDeactivateError(null);
+            }}
+          />
+        )}
+        {!isDesktopViewport && (
+          <MobileDangerConfirmSheet
+            isOpen={activateModalOpen}
+            title="¿Dar de alta deportista?"
+            message={
+              <>
+                Se dará de alta a{" "}
+                <Box as="span" fontWeight="700" color="#334155">
+                  {activateStudent?.full_name || "este deportista"}
+                </Box>
+                .
+              </>
+            }
+            confirmLabel="Dar de alta"
+            error={activateError}
+            tone="success"
+            isLoading={activateLoading}
+            onConfirm={handleActivateConfirm}
+            onClose={() => {
+              setActivateModalOpen(false);
+              setActivateError(null);
+            }}
+          />
+        )}
+        <Modal isOpen={deleteModalOpen && isDesktopViewport} onClose={() => { setDeleteModalOpen(false); setDeleteError(null); }} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
@@ -6253,7 +8309,9 @@ function App() {
                   {deleteError}
                 </Alert>
               )}
-                <Text color="gray.500">Esta acción eliminará el ejercicio seleccionado.</Text>
+                <Text color="gray.500">
+                  Se eliminará este ejercicio de forma permanente. Esta acción no se puede deshacer.
+                </Text>
               </Stack>
             </ModalBody>
             <ModalFooter borderTopWidth="1px" borderColor="gray.100" py={4}>
@@ -6274,7 +8332,10 @@ function App() {
                   color="white"
                   _hover={{ bg: "#ea580c" }}
                   _active={{ bg: "#c2410c" }}
-                  onClick={() => setDeleteModalOpen(false)}
+                  onClick={() => {
+                    setDeleteModalOpen(false);
+                    setDeleteError(null);
+                  }}
                   isDisabled={deleteLoading}
                 >
                   Cancelar
@@ -6283,7 +8344,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={deleteRoutineModalOpen} onClose={() => setDeleteRoutineModalOpen(false)} isCentered>
+        <Modal isOpen={deleteRoutineModalOpen && isDesktopViewport} onClose={() => { setDeleteRoutineModalOpen(false); setDeleteRoutineError(null); }} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
@@ -6311,7 +8372,7 @@ function App() {
                   ¿Eliminar rutina?
                 </Heading>
                 <Text color="gray.500" fontSize="sm" maxW="300px">
-                  Esta acción eliminará la rutina seleccionada. Esta acción no se puede deshacer.
+                  Se eliminará esta rutina de forma permanente. Esta acción no se puede deshacer.
                 </Text>
                 {deleteRoutineError && (
                   <Alert status="error" borderRadius="md" w="100%">
@@ -6336,7 +8397,10 @@ function App() {
                     color="white"
                     _hover={{ bg: "#ea580c" }}
                     _active={{ bg: "#c2410c" }}
-                    onClick={() => setDeleteRoutineModalOpen(false)}
+                    onClick={() => {
+                      setDeleteRoutineModalOpen(false);
+                      setDeleteRoutineError(null);
+                    }}
                     isDisabled={deleteRoutineLoading}
                   >
                     Cancelar
@@ -6416,7 +8480,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={deleteAssignedRoutineModalOpen} onClose={() => setDeleteAssignedRoutineModalOpen(false)} isCentered>
+        <Modal isOpen={deleteAssignedRoutineModalOpen && isDesktopViewport} onClose={() => { setDeleteAssignedRoutineModalOpen(false); setDeleteAssignedRoutineError(null); }} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "420px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
             <ModalBody py={8}>
@@ -6444,7 +8508,7 @@ function App() {
                   ¿Eliminar rutina asignada?
                 </Heading>
                 <Text color="gray.500" fontSize="sm" maxW="300px">
-                  Se eliminará la rutina activa asignada al deportista. Esta acción no se puede deshacer.
+                  Se eliminará la rutina activa asignada a este deportista. Esta acción no se puede deshacer.
                 </Text>
                 {deleteAssignedRoutineError && (
                   <Alert status="error" borderRadius="md" w="100%">
@@ -6469,7 +8533,10 @@ function App() {
                     color="white"
                     _hover={{ bg: "#ea580c" }}
                     _active={{ bg: "#c2410c" }}
-                    onClick={() => setDeleteAssignedRoutineModalOpen(false)}
+                    onClick={() => {
+                      setDeleteAssignedRoutineModalOpen(false);
+                      setDeleteAssignedRoutineError(null);
+                    }}
                     isDisabled={deleteAssignedRoutineLoading}
                   >
                     Cancelar
@@ -6479,39 +8546,72 @@ function App() {
             </ModalBody>
           </ModalContent>
         </Modal>
-        <Modal isOpen={replaceAssignModalOpen} onClose={() => { void handleCancelReplaceAndAssign(); }} isCentered>
-          <ModalOverlay />
-          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh">
-            <ModalHeader>
-              <Text textAlign="center">Este deportista ya tiene una rutina asignada.</Text>
-              <Text textAlign="center">¿Desea eliminar la rutina y asignarle una nueva?</Text>
-            </ModalHeader>
-            <ModalBody>
+        {!isDesktopViewport && (
+          <MobileDangerConfirmSheet
+            isOpen={replaceAssignModalOpen}
+            title="¿Reemplazar rutina asignada?"
+            message="Este deportista ya tiene una rutina asignada. Se eliminará la actual y se asignará la nueva."
+            confirmLabel="Eliminar y asignar nueva"
+            error={replaceAssignError}
+            isLoading={replaceAssignLoading}
+            onConfirm={handleConfirmReplaceAndAssign}
+            onClose={() => { void handleCancelReplaceAndAssign(); }}
+          />
+        )}
+        <Modal isOpen={replaceAssignModalOpen && isDesktopViewport} onClose={() => { void handleCancelReplaceAndAssign(); }} isCentered>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "460px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
+            <ModalBody py={8}>
+              <Stack spacing={4} align="center" textAlign="center">
+                <Box w="56px" h="56px" borderRadius="full" bg="#fee2e2" display="flex" alignItems="center" justifyContent="center">
+                  <Box
+                    as="svg"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    boxSize="20px"
+                    fill="none"
+                    stroke="#ef4444"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+                    <path d="M12 9v4" />
+                    <path d="M12 17h.01" />
+                  </Box>
+                </Box>
+                <Heading size="md" color="gray.900">
+                  ¿Reemplazar rutina asignada?
+                </Heading>
+                <Text color="gray.500" fontSize="sm" maxW="320px">
+                  Este deportista ya tiene una rutina asignada. Se eliminará la actual y se asignará la nueva.
+                </Text>
               {replaceAssignError && (
-                <Alert status="error" borderRadius="md">
+                <Alert status="error" borderRadius="md" w="100%">
                   <AlertIcon />
                   {replaceAssignError}
                 </Alert>
               )}
+              </Stack>
             </ModalBody>
-            <ModalFooter>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.100" py={4}>
               <HStack spacing={3}>
                 <Button
                   bg="white"
-                  color="black"
-                  borderColor="gray.300"
+                  color="#ef4444"
+                  borderColor="#fecaca"
                   borderWidth="1px"
-                  _hover={{ bg: "gray.100" }}
+                  _hover={{ bg: "#fef2f2" }}
                   onClick={handleConfirmReplaceAndAssign}
                   isLoading={replaceAssignLoading}
                 >
                   Eliminar y asignar rutina nueva
                 </Button>
                 <Button
-                  bg="black"
+                  bg="#f97316"
                   color="white"
-                  _hover={{ bg: "gray.800" }}
-                  _active={{ bg: "gray.900" }}
+                  _hover={{ bg: "#ea580c" }}
+                  _active={{ bg: "#c2410c" }}
                   onClick={() => { void handleCancelReplaceAndAssign(); }}
                   isDisabled={replaceAssignLoading}
                 >
@@ -6521,39 +8621,76 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={preAssignConflictModalOpen} onClose={() => setPreAssignConflictModalOpen(false)} isCentered>
-          <ModalOverlay />
-          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "560px" }} maxH="90vh">
-            <ModalHeader>
-              <Text textAlign="center">Este deportista ya tiene una rutina asignada.</Text>
-              <Text textAlign="center">¿Desea eliminar la rutina y asignarle una nueva?</Text>
-            </ModalHeader>
-            <ModalBody>
+        {!isDesktopViewport && (
+          <MobileDangerConfirmSheet
+            isOpen={preAssignConflictModalOpen}
+            title="¿Reemplazar rutina asignada?"
+            message="Este deportista ya tiene una rutina asignada. Se eliminará la actual y se asignará la nueva."
+            confirmLabel="Eliminar y asignar nueva"
+            error={preAssignConflictError}
+            isLoading={preAssignConflictLoading}
+            onConfirm={handlePreAssignDeleteAndContinue}
+            onClose={() => {
+              setPreAssignConflictModalOpen(false);
+              setPreAssignConflictStudent(null);
+              setPreAssignConflictAssignment(null);
+            }}
+          />
+        )}
+        <Modal isOpen={preAssignConflictModalOpen && isDesktopViewport} onClose={() => setPreAssignConflictModalOpen(false)} isCentered>
+          <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
+          <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "460px" }} maxH="90vh" borderRadius="14px" overflow="hidden">
+            <ModalBody py={8}>
+              <Stack spacing={4} align="center" textAlign="center">
+                <Box w="56px" h="56px" borderRadius="full" bg="#fee2e2" display="flex" alignItems="center" justifyContent="center">
+                  <Box
+                    as="svg"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    boxSize="20px"
+                    fill="none"
+                    stroke="#ef4444"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+                    <path d="M12 9v4" />
+                    <path d="M12 17h.01" />
+                  </Box>
+                </Box>
+                <Heading size="md" color="gray.900">
+                  ¿Reemplazar rutina asignada?
+                </Heading>
+                <Text color="gray.500" fontSize="sm" maxW="320px">
+                  Este deportista ya tiene una rutina asignada. Se eliminará la actual y se asignará la nueva.
+                </Text>
               {preAssignConflictError && (
-                <Alert status="error" borderRadius="md">
+                <Alert status="error" borderRadius="md" w="100%">
                   <AlertIcon />
                   {preAssignConflictError}
                 </Alert>
               )}
+              </Stack>
             </ModalBody>
-            <ModalFooter>
+            <ModalFooter borderTopWidth="1px" borderColor="gray.100" py={4}>
               <HStack spacing={3}>
                 <Button
                   bg="white"
-                  color="black"
-                  borderColor="gray.300"
+                  color="#ef4444"
+                  borderColor="#fecaca"
                   borderWidth="1px"
-                  _hover={{ bg: "gray.100" }}
+                  _hover={{ bg: "#fef2f2" }}
                   onClick={handlePreAssignDeleteAndContinue}
                   isLoading={preAssignConflictLoading}
                 >
                   Eliminar y asignar rutina nueva
                 </Button>
                 <Button
-                  bg="black"
+                  bg="#f97316"
                   color="white"
-                  _hover={{ bg: "gray.800" }}
-                  _active={{ bg: "gray.900" }}
+                  _hover={{ bg: "#ea580c" }}
+                  _active={{ bg: "#c2410c" }}
                   onClick={() => {
                     setPreAssignConflictModalOpen(false);
                     setPreAssignConflictStudent(null);
@@ -6567,7 +8704,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={deactivateModalOpen} onClose={() => setDeactivateModalOpen(false)} isCentered>
+        <Modal isOpen={deactivateModalOpen && isDesktopViewport} onClose={() => { setDeactivateModalOpen(false); setDeactivateError(null); }} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "460px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
@@ -6592,7 +8729,7 @@ function App() {
                   </Box>
                   <Text fontWeight="700" color="gray.900">¿Dar de baja deportista?</Text>
                 </HStack>
-                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => setDeactivateModalOpen(false)}>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => { setDeactivateModalOpen(false); setDeactivateError(null); }}>
                   ×
                 </Button>
               </HStack>
@@ -6605,7 +8742,7 @@ function App() {
                 </Alert>
               )}
               <Text color="gray.600">
-                Se dará de baja a{" "}
+                Se desactivará a{" "}
                 <Box as="span" fontWeight="600" color="gray.800">
                   {deactivateStudent?.full_name || "este deportista"}
                 </Box>
@@ -6630,7 +8767,10 @@ function App() {
                   color="white"
                   _hover={{ bg: "#ea580c" }}
                   _active={{ bg: "#c2410c" }}
-                  onClick={() => setDeactivateModalOpen(false)}
+                  onClick={() => {
+                    setDeactivateModalOpen(false);
+                    setDeactivateError(null);
+                  }}
                   isDisabled={deactivateLoading}
                 >
                   Cancelar
@@ -6639,7 +8779,7 @@ function App() {
             </ModalFooter>
           </ModalContent>
         </Modal>
-        <Modal isOpen={activateModalOpen} onClose={() => setActivateModalOpen(false)} isCentered>
+        <Modal isOpen={activateModalOpen && isDesktopViewport} onClose={() => { setActivateModalOpen(false); setActivateError(null); }} isCentered>
           <ModalOverlay bg="rgba(17, 24, 39, 0.55)" />
           <ModalContent maxW={{ base: "calc(100vw - 1rem)", md: "460px" }} maxH="90vh" borderRadius="12px" overflow="hidden">
             <ModalHeader borderBottomWidth="1px" borderColor="gray.200" py={4}>
@@ -6664,7 +8804,7 @@ function App() {
                   </Box>
                   <Text fontWeight="700" color="gray.900">¿Dar de alta deportista?</Text>
                 </HStack>
-                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => setActivateModalOpen(false)}>
+                <Button variant="ghost" size="sm" color="gray.400" _hover={{ bg: "gray.100", color: "gray.700" }} onClick={() => { setActivateModalOpen(false); setActivateError(null); }}>
                   ×
                 </Button>
               </HStack>
@@ -6702,7 +8842,10 @@ function App() {
                   color="white"
                   _hover={{ bg: "#ea580c" }}
                   _active={{ bg: "#c2410c" }}
-                  onClick={() => setActivateModalOpen(false)}
+                  onClick={() => {
+                    setActivateModalOpen(false);
+                    setActivateError(null);
+                  }}
                   isDisabled={activateLoading}
                 >
                   Cancelar

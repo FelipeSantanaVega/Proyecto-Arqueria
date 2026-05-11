@@ -5,7 +5,7 @@ import re
 from datetime import date, timedelta, datetime
 from io import BytesIO
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Response, status
 from sqlalchemy import select, and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
@@ -14,7 +14,7 @@ from ..deps import get_db
 from ..models import Exercise, StudentRoutineAssignment, Student, Routine, RoutineDay, RoutineDayExercise, StudentRoutineHistory, User
 from ..ownership import ensure_record_access, resolve_owner_user_id
 from ..schemas import AssignmentCreate, AssignmentOut, AssignmentStatusUpdate, AssignmentHistoryOut
-from ..security import get_current_user, require_roles
+from ..security import get_current_user, get_user_from_access_token, require_roles
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
 
@@ -462,12 +462,12 @@ def _sanitize_filename(value: str) -> str:
     return safe or "rutina"
 
 
-@router.get("/{assignment_id}/pdf")
-def export_assignment_pdf(
+def _build_assignment_pdf_response(
     assignment_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    _: None = Depends(require_roles({"admin", "professor"})),
+    db: Session,
+    current_user: User,
+    *,
+    inline: bool = False,
 ):
     stmt = (
         select(StudentRoutineAssignment)
@@ -756,8 +756,49 @@ def export_assignment_pdf(
     else:
         base_name = f"PLAN SEMANAL {assignment.student.full_name}"
     file_name = _sanitize_filename(f"{base_name}.pdf")
+    disposition = "inline" if inline else "attachment"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
+        headers={"Content-Disposition": f'{disposition}; filename="{file_name}"'},
     )
+
+
+@router.get("/{assignment_id}/pdf")
+def export_assignment_pdf(
+    assignment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_roles({"admin", "professor"})),
+):
+    return _build_assignment_pdf_response(assignment_id, db, current_user)
+
+
+@router.post("/{assignment_id}/pdf")
+def export_assignment_pdf_post(
+    assignment_id: int,
+    access_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    current_user = get_user_from_access_token(db, access_token)
+    if current_user.role not in {"admin", "professor"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permisos insuficientes",
+        )
+    return _build_assignment_pdf_response(assignment_id, db, current_user)
+
+
+@router.get("/{assignment_id}/pdf-download")
+def export_assignment_pdf_download(
+    assignment_id: int,
+    access_token: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    current_user = get_user_from_access_token(db, access_token)
+    if current_user.role not in {"admin", "professor"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permisos insuficientes",
+        )
+    return _build_assignment_pdf_response(assignment_id, db, current_user)

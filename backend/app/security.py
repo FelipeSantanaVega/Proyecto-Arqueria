@@ -79,9 +79,7 @@ def decode_token(token: str, *, verify_exp: bool = True) -> dict:
     return payload
 
 
-def get_current_user(
-    db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
-) -> User:
+def get_user_from_access_token(db: Session, token: str) -> User:
     payload = decode_token(token)
     token_type = payload.get("type")
     if token_type and token_type != "access":
@@ -105,6 +103,12 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
+
+
+def get_current_user(
+    db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
+) -> User:
+    return get_user_from_access_token(db, token)
 
 
 def get_current_user_optional(

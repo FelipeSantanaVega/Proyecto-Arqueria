@@ -11,7 +11,8 @@ RUN pip install --no-cache-dir poetry==1.8.3
 COPY pyproject.toml poetry.lock ./
 
 RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi --no-root --only main
+    && poetry install --no-interaction --no-ansi --no-root --only main \
+    && pip install --no-cache-dir python-multipart==0.0.20
 
 COPY app ./app
 

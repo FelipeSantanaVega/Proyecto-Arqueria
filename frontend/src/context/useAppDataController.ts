@@ -78,7 +78,7 @@ export function useAppDataController(
   token: string | null,
   options?: {
     view?: "dashboard" | "login" | "professor";
-    activeSection?: "administrar_rutinas" | "perfil" | "rutina" | "ejercicio" | "alumno" | null;
+    activeSection?: "inicio" | "administrar_rutinas" | "perfil" | "rutina" | "ejercicio" | "alumno" | null;
   },
 ) {
   const [health, setHealth] = useState<Health | null>(null);
@@ -221,7 +221,12 @@ export function useAppDataController(
 
     if (view !== "professor") return;
 
-    if (activeSection === "ejercicio") {
+    if (activeSection === "inicio") {
+      void ensureAssignmentsLoaded();
+      void ensureStudentsLoaded();
+      void ensureRoutinesLoaded();
+      void ensureExercisesLoaded();
+    } else if (activeSection === "ejercicio") {
       void ensureExercisesLoaded();
     } else if (activeSection === "rutina") {
       void ensureExercisesLoaded();
@@ -253,6 +258,7 @@ export function useAppDataController(
       return healthLoading || exercisesLoading || routinesLoading || studentsLoading || assignmentsLoading || usersLoading;
     }
     if (view !== "professor") return false;
+    if (activeSection === "inicio") return exercisesLoading || routinesLoading || studentsLoading || assignmentsLoading;
     if (activeSection === "ejercicio") return exercisesLoading;
     if (activeSection === "rutina") return exercisesLoading || routinesLoading;
     if (activeSection === "alumno") return studentsLoading;

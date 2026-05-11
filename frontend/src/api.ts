@@ -66,6 +66,36 @@ export function getAuthEventName() {
 
 let refreshPromise: Promise<string | null> | null = null
 
+function formatValidationDetail(detail: unknown): string | null {
+  if (!Array.isArray(detail) || detail.length === 0) return null
+  const firstItem = detail[0] as { msg?: unknown }
+  if (typeof firstItem?.msg === 'string' && firstItem.msg.trim()) {
+    return firstItem.msg.trim()
+  }
+  return null
+}
+
+function extractApiErrorMessage(raw: string, fallback: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return fallback
+
+  try {
+    const parsed = JSON.parse(trimmed) as { detail?: unknown; message?: unknown }
+    if (typeof parsed?.detail === 'string' && parsed.detail.trim()) {
+      return parsed.detail.trim()
+    }
+    const formattedDetail = formatValidationDetail(parsed?.detail)
+    if (formattedDetail) return formattedDetail
+    if (typeof parsed?.message === 'string' && parsed.message.trim()) {
+      return parsed.message.trim()
+    }
+  } catch {
+    // ignore parse error and return raw text below
+  }
+
+  return trimmed
+}
+
 async function refreshAccessToken(): Promise<string | null> {
   if (refreshPromise) return refreshPromise
   refreshPromise = (async () => {
@@ -161,7 +191,7 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
       }
     }
     const detail = await res.text()
-    throw new Error(detail || `Error ${res.status} al llamar ${path}`)
+    throw new Error(extractApiErrorMessage(detail, `Error ${res.status} al llamar ${path}`))
   }
   // Respuestas 204 o sin cuerpo no deben intentar parsear JSON
   if (res.status === 204) return null as T

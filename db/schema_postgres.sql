@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS users (
   role VARCHAR(20) NOT NULL DEFAULT 'admin' CHECK (role IN ('admin','professor','student')),
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   preferred_lang CHAR(2) NOT NULL DEFAULT 'es' CHECK (preferred_lang IN ('es','en')),
+  refresh_token_hash VARCHAR(255) NULL,
+  refresh_token_expires_at TIMESTAMP NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -27,41 +29,50 @@ CREATE TABLE IF NOT EXISTS exercises (
   distance_m NUMERIC(6,2) NOT NULL CHECK (distance_m >= 0),
   description TEXT NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by_user_id BIGINT NULL REFERENCES users(id),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_exercises_active ON exercises (is_active);
 CREATE INDEX IF NOT EXISTS idx_exercises_name ON exercises (name);
+CREATE INDEX IF NOT EXISTS idx_exercises_created_by ON exercises (created_by_user_id);
 
 CREATE TABLE IF NOT EXISTS students (
   id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NULL UNIQUE REFERENCES users(id),
   full_name VARCHAR(150) NOT NULL,
-  document_number VARCHAR(50) NOT NULL UNIQUE,
+  document_number VARCHAR(50) NOT NULL,
   contact VARCHAR(255) NULL,
   bow_pounds NUMERIC(6,2) NULL CHECK (bow_pounds IS NULL OR bow_pounds > 0),
   arrows_available INTEGER NULL CHECK (arrows_available IS NULL OR arrows_available >= 0),
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   inactive_since TIMESTAMP NULL,
+  created_by_user_id BIGINT NULL REFERENCES users(id),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uq_students_owner_document UNIQUE (created_by_user_id, document_number)
 );
 CREATE INDEX IF NOT EXISTS idx_students_active ON students (is_active);
 CREATE INDEX IF NOT EXISTS idx_students_name ON students (full_name);
 CREATE INDEX IF NOT EXISTS idx_students_active_name ON students (is_active, full_name);
 CREATE INDEX IF NOT EXISTS idx_students_inactive_since ON students (is_active, inactive_since);
+CREATE INDEX IF NOT EXISTS idx_students_created_by ON students (created_by_user_id);
 
 CREATE TABLE IF NOT EXISTS routines (
   id BIGSERIAL PRIMARY KEY,
-  name VARCHAR(120) NOT NULL UNIQUE,
+  name VARCHAR(120) NOT NULL,
   description TEXT NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   is_template BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by_user_id BIGINT NULL REFERENCES users(id),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uq_routines_owner_name UNIQUE (created_by_user_id, name)
 );
 CREATE INDEX IF NOT EXISTS idx_routines_active ON routines (is_active);
 CREATE INDEX IF NOT EXISTS idx_routines_name ON routines (name);
 CREATE INDEX IF NOT EXISTS idx_routines_template_active ON routines (is_template, is_active);
+CREATE INDEX IF NOT EXISTS idx_routines_created_by ON routines (created_by_user_id);
 
 CREATE TABLE IF NOT EXISTS routine_days (
   id BIGSERIAL PRIMARY KEY,
@@ -99,6 +110,7 @@ CREATE TABLE IF NOT EXISTS student_routine_assignments (
   end_date DATE NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active','paused','finished')),
   notes TEXT NULL,
+  created_by_user_id BIGINT NULL REFERENCES users(id),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT chk_assignments_date_range CHECK (
@@ -109,6 +121,7 @@ CREATE INDEX IF NOT EXISTS idx_assignments_student ON student_routine_assignment
 CREATE INDEX IF NOT EXISTS idx_assignments_status ON student_routine_assignments (status);
 CREATE INDEX IF NOT EXISTS idx_assignments_routine ON student_routine_assignments (routine_id);
 CREATE INDEX IF NOT EXISTS idx_assignments_student_status ON student_routine_assignments (student_id, status);
+CREATE INDEX IF NOT EXISTS idx_student_routine_assignments_created_by ON student_routine_assignments (created_by_user_id);
 
 CREATE TABLE IF NOT EXISTS student_routine_history (
   id BIGSERIAL PRIMARY KEY,
@@ -125,8 +138,10 @@ CREATE TABLE IF NOT EXISTS student_routine_history (
   student_observations TEXT NULL,
   weekly_total_arrows INTEGER NOT NULL DEFAULT 0,
   snapshot_json TEXT NOT NULL,
+  created_by_user_id BIGINT NULL REFERENCES users(id),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_history_student_completed ON student_routine_history (student_id, completed_at);
 CREATE INDEX IF NOT EXISTS idx_history_completed ON student_routine_history (completed_at);
+CREATE INDEX IF NOT EXISTS idx_student_routine_history_created_by ON student_routine_history (created_by_user_id);

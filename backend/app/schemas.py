@@ -106,7 +106,8 @@ class StudentBase(BaseModel):
 
 
 class StudentCreate(StudentBase):
-    pass
+    account_username: Optional[str] = None
+    account_password: Optional[str] = None
 
 
 class StudentUpdate(StudentBase):
@@ -119,6 +120,7 @@ class StudentStatusUpdate(BaseModel):
 
 class StudentOut(StudentBase):
     id: int
+    user_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
