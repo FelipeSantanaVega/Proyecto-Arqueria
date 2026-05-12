@@ -499,6 +499,7 @@ def _build_assignment_pdf_response(
         from reportlab.lib.pagesizes import A4
         from reportlab.lib import colors
         from reportlab.lib.units import mm
+        from reportlab.lib.utils import simpleSplit
         from reportlab.pdfgen import canvas
     except Exception as exc:  # pragma: no cover
         raise HTTPException(
@@ -508,155 +509,131 @@ def _build_assignment_pdf_response(
 
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4)
+    pdf.setTitle("Plan semanal")
     page_w, page_h = A4
-    x_left = 18 * mm
-    x_right = page_w - (18 * mm)
-    y = page_h - 18 * mm
-    line_h = 5.2 * mm
+    x_left = 15 * mm
+    x_right = page_w - (15 * mm)
+    content_w = x_right - x_left
+    page_margin_bottom = 16 * mm
+    y = page_h
+    page_number = 0
 
-    def ensure_space(min_y: float = 20 * mm):
-        nonlocal y
-        if y < min_y:
-            pdf.showPage()
-            y = page_h - 20 * mm
-        pdf.setStrokeColor(colors.black)
-        pdf.setFillColor(colors.black)
+    brand = colors.HexColor("#fb5a13")
+    brand_dark = colors.HexColor("#c2410c")
+    text_primary = colors.HexColor("#12213a")
+    text_secondary = colors.HexColor("#536179")
+    text_muted = colors.HexColor("#748092")
+    card_fill = colors.white
+    card_border = colors.HexColor("#e6eaf2")
+    soft_fill = colors.HexColor("#f7f8fb")
+    soft_orange = colors.HexColor("#fff1e8")
 
-    def write_line(
+    def draw_round_rect(x: float, y_top: float, width: float, height: float, *, fill_color, stroke_color=card_border, radius: float = 5 * mm, stroke_width: float = 1):
+        pdf.setFillColor(fill_color)
+        pdf.setStrokeColor(stroke_color)
+        pdf.setLineWidth(stroke_width)
+        pdf.roundRect(x, y_top - height, width, height, radius, stroke=1, fill=1)
+
+    def draw_text(
         text: str,
+        x: float,
+        y_baseline: float,
         *,
-        x: float = x_left,
-        size: int = 11,
-        bold: bool = False,
-        color=colors.black,
-        step: float | None = None,
-    ):
-        nonlocal y
-        ensure_space()
-        pdf.setFont("Times-Bold" if bold else "Times-Roman", size)
-        pdf.setFillColor(color)
-        pdf.drawString(x, y, text)
-        pdf.setFillColor(colors.black)
-        y -= step if step is not None else line_h
-
-    def write_wrapped(
-        text: str,
-        *,
-        x: float = x_left,
-        max_width: float = x_right - x_left,
+        font_name: str = "Helvetica",
         size: int = 10,
-        bold: bool = False,
-        leading: float = 4.8 * mm,
+        color=text_primary,
     ):
-        nonlocal y
-        if not text:
-            return
-        words = text.split()
-        if not words:
-            return
-        font_name = "Times-Bold" if bold else "Times-Roman"
         pdf.setFont(font_name, size)
-        line = words[0]
-        for word in words[1:]:
-            trial = f"{line} {word}"
-            if pdf.stringWidth(trial, font_name, size) <= max_width:
-                line = trial
-            else:
-                ensure_space()
-                pdf.drawString(x, y, line)
-                y -= leading
-                line = word
-        ensure_space()
-        pdf.drawString(x, y, line)
-        y -= leading
+        pdf.setFillColor(color)
+        pdf.drawString(x, y_baseline, text)
 
-    def write_wrapped_justify(
-        text: str,
-        *,
-        size: int = 12,
-        bold: bool = False,
-        leading: float = 5.2 * mm,
-    ):
-        nonlocal y
+    def split_text(text: str, *, font_name: str, size: int, max_width: float) -> list[str]:
         if not text:
-            return
-        words = text.split()
-        if not words:
-            return
-        font_name = "Times-Bold" if bold else "Times-Roman"
-        pdf.setFont(font_name, size)
-        max_width = x_right - x_left
-        lines: list[str] = []
-        line = words[0]
-        for word in words[1:]:
-            trial = f"{line} {word}"
-            if pdf.stringWidth(trial, font_name, size) <= max_width:
-                line = trial
-            else:
-                lines.append(line)
-                line = word
-        lines.append(line)
-        for i, ln in enumerate(lines):
-            ensure_space()
-            # Justificado tipo Word: solo líneas intermedias, última línea alineada a la izquierda.
-            is_last = i == len(lines) - 1
-            parts = ln.split(" ")
-            if is_last or len(parts) <= 1:
-                pdf.drawString(x_left, y, ln)
-            else:
-                # Evita separar visualmente el bullet del texto al justificar.
-                if parts[0] == "•" and len(parts) > 2:
-                    bullet = parts[0]
-                    rest_parts = parts[1:]
-                    bullet_gap = pdf.stringWidth(" ", font_name, size)
-                    bullet_width = pdf.stringWidth(bullet, font_name, size)
-                    rest_width = max_width - bullet_width - bullet_gap
-                    rest_words_width = sum(pdf.stringWidth(part, font_name, size) for part in rest_parts)
-                    rest_gaps = len(rest_parts) - 1
-                    rest_gap_width = (
-                        max((rest_width - rest_words_width) / rest_gaps, bullet_gap)
-                        if rest_gaps > 0
-                        else bullet_gap
-                    )
-                    x_cursor = x_left
-                    pdf.drawString(x_cursor, y, bullet)
-                    x_cursor += bullet_width + bullet_gap
-                    for idx_part, part in enumerate(rest_parts):
-                        pdf.drawString(x_cursor, y, part)
-                        if idx_part < rest_gaps:
-                            x_cursor += pdf.stringWidth(part, font_name, size) + rest_gap_width
-                else:
-                    words_width = sum(pdf.stringWidth(part, font_name, size) for part in parts)
-                    gaps = len(parts) - 1
-                    total_space = max_width - words_width
-                    gap_width = max(total_space / gaps, pdf.stringWidth(" ", font_name, size))
-                    x_cursor = x_left
-                    for idx_part, part in enumerate(parts):
-                        pdf.drawString(x_cursor, y, part)
-                        if idx_part < gaps:
-                            x_cursor += pdf.stringWidth(part, font_name, size) + gap_width
-            y -= leading
+            return []
+        return simpleSplit(text, font_name, size, max_width)
 
-    def write_multiline_notes(
+    def draw_multiline_text(
         text: str,
+        x: float,
+        y_top: float,
         *,
-        size: int = 12,
-        leading: float = 5.2 * mm,
-    ):
-        nonlocal y
-        if not text:
-            return
-        for raw_line in text.splitlines():
-            if not raw_line.strip():
-                y -= leading
-                ensure_space()
-                continue
-            write_wrapped(
-                raw_line,
-                size=size,
-                bold=False,
-                leading=leading,
+        font_name: str = "Helvetica",
+        size: int = 10,
+        color=text_secondary,
+        leading: float = 4.1 * mm,
+        max_width: float,
+    ) -> float:
+        lines = split_text(text, font_name=font_name, size=size, max_width=max_width)
+        cursor_y = y_top
+        for line in lines:
+            draw_text(line, x, cursor_y, font_name=font_name, size=size, color=color)
+            cursor_y -= leading
+        return cursor_y
+
+    def draw_footer():
+        footer_y = 10 * mm
+        pdf.setStrokeColor(card_border)
+        pdf.setLineWidth(0.7)
+        pdf.line(x_left, footer_y + 4 * mm, x_right, footer_y + 4 * mm)
+        draw_text(
+            f"Página {page_number}",
+            x_right - 18 * mm,
+            footer_y,
+            font_name="Helvetica",
+            size=8,
+            color=text_muted,
+        )
+
+    def start_page(*, include_summary: bool):
+        nonlocal y, page_number
+        if page_number:
+            pdf.showPage()
+        page_number += 1
+        pdf.setFillColor(colors.white)
+        pdf.setStrokeColor(colors.white)
+        pdf.rect(0, 0, page_w, page_h, stroke=0, fill=1)
+
+        header_h = 24 * mm
+        draw_round_rect(x_left, page_h - 12 * mm, content_w, header_h, fill_color=soft_fill, stroke_color=soft_fill, radius=6 * mm, stroke_width=0)
+
+        title_center_x = x_left + (content_w / 2)
+        club_title = "ARQUEROS ANDINOS"
+        doc_title = "Plan semanal de entrenamiento"
+        pdf.setFont("Helvetica-Bold", 11)
+        club_width = pdf.stringWidth(club_title, "Helvetica-Bold", 11)
+        pdf.setFont("Helvetica-Bold", 18)
+        doc_width = pdf.stringWidth(doc_title, "Helvetica-Bold", 18)
+        draw_text(club_title, title_center_x - (club_width / 2), page_h - 16.8 * mm, font_name="Helvetica-Bold", size=11, color=brand_dark)
+        draw_text(doc_title, title_center_x - (doc_width / 2), page_h - 24.2 * mm, font_name="Helvetica-Bold", size=18, color=text_primary)
+
+        y = page_h - 42 * mm
+
+        if include_summary:
+            draw_text(f"Deportista: {assignment.student.full_name}", x_left, y, font_name="Helvetica-Bold", size=13, color=text_primary)
+            y -= 5.5 * mm
+            date_range = (
+                f"Semana: {assignment.start_date.strftime('%d/%m/%Y') if assignment.start_date else '--/--/----'}"
+                f" al {assignment.end_date.strftime('%d/%m/%Y') if assignment.end_date else '--/--/----'}"
             )
+            draw_text(date_range, x_left, y, font_name="Helvetica", size=9, color=text_secondary)
+            y -= 5 * mm
+
+            objective_lines = split_text(
+                f"Objetivo: {objective}",
+                font_name="Helvetica",
+                size=10,
+                max_width=content_w,
+            )
+            for line in objective_lines:
+                draw_text(line, x_left, y, font_name="Helvetica", size=10, color=text_secondary)
+                y -= 4.2 * mm
+            y -= 1.5 * mm
+
+    def ensure_space(required_height: float):
+        nonlocal y
+        if y - required_height < page_margin_bottom:
+            draw_footer()
+            start_page(include_summary=False)
 
     def format_distance(distance: float) -> str:
         if float(distance).is_integer():
@@ -670,75 +647,136 @@ def _build_assignment_pdf_response(
         day_totals.append(total)
         weekly_total += total
 
-    # Formato 1:1 con el documento de referencia (texto corrido, Times New Roman 12).
-    start_label = assignment.start_date.strftime("%d/%m") if assignment.start_date else "--/--"
-    end_label = assignment.end_date.strftime("%d/%m/%Y") if assignment.end_date else "--/--/----"
+    start_page(include_summary=True)
 
-    write_line("PLAN SEMANAL", size=12, bold=False, step=5.2 * mm)
-    write_line(
-        f"SEMANA: {start_label} al {end_label}    OBJETIVO: {objective}",
-        size=12,
-        bold=False,
-        step=5.2 * mm,
-    )
-    write_line(
-        f"VOLUMEN SEMANAL: {weekly_total} disparos    DEPORTISTA: {assignment.student.full_name}",
-        size=12,
-        bold=False,
-        step=6.3 * mm,
-    )
+    summary_gap = 3 * mm
+    summary_width = (content_w - (2 * summary_gap)) / 3
+    summary_height = 19 * mm
+    summary_y = y
+    status_finished = assignment.status == "finished"
+    status_label = "Finalizada" if status_finished else "En curso"
+    status_color = colors.HexColor("#dc2626") if status_finished else colors.HexColor("#15803d")
+    summary_items = [
+        ("Volumen semanal", f"{weekly_total} disparos"),
+        ("Días programados", str(len(effective_days))),
+        ("Estado", status_label),
+    ]
+    for idx, (label, value) in enumerate(summary_items):
+        card_x = x_left + (idx * (summary_width + summary_gap))
+        draw_round_rect(card_x, summary_y, summary_width, summary_height, fill_color=card_fill, stroke_color=card_border, radius=4 * mm)
+        draw_text(label.upper(), card_x + 4 * mm, summary_y - 6 * mm, font_name="Helvetica-Bold", size=7, color=text_muted)
+        draw_text(value, card_x + 4 * mm, summary_y - 13 * mm, font_name="Helvetica-Bold", size=12, color=brand if idx < 2 else status_color)
+    y -= summary_height + 5 * mm
 
     clean_professor_notes = (professor_notes or "").strip()
     if clean_professor_notes:
-        write_line("Notas del profesor:", size=12, bold=True, step=5.2 * mm)
-        write_multiline_notes(
-            professor_notes,
-            size=12,
-            leading=5.2 * mm,
-        )
-        y -= 0.8 * mm
+        notes_lines = []
+        for raw_line in clean_professor_notes.splitlines():
+            if not raw_line.strip():
+                notes_lines.append("")
+                continue
+            notes_lines.extend(split_text(raw_line, font_name="Helvetica", size=9, max_width=content_w - 10 * mm))
+        notes_height = 11 * mm + max(len(notes_lines), 1) * (3.9 * mm)
+        ensure_space(notes_height + 2 * mm)
+        draw_round_rect(x_left, y, content_w, notes_height, fill_color=soft_orange, stroke_color=colors.HexColor("#fbd0b5"), radius=4 * mm)
+        draw_text("Notas del profesor", x_left + 5 * mm, y - 6 * mm, font_name="Helvetica-Bold", size=10, color=brand_dark)
+        notes_y = y - 11 * mm
+        if notes_lines:
+            for note_line in notes_lines:
+                if note_line:
+                    draw_text(note_line, x_left + 5 * mm, notes_y, font_name="Helvetica", size=9, color=text_secondary)
+                notes_y -= 3.9 * mm
+        y -= notes_height + 5 * mm
 
-    # Contenido por día.
-    for idx, day in enumerate(effective_days, start=1):
-        ensure_space(30 * mm)
-        # Separador al inicio de cada día (incluye Día 1).
-        pdf.setStrokeColor(colors.HexColor("#888888"))
-        pdf.setLineWidth(0.8)
-        pdf.line(x_left, y, x_right, y)
-        # Línea vacía entre separador y encabezado del día.
-        y -= line_h
-        write_line(f"Día {idx}", size=12, bold=True, step=5.2 * mm)
+    day_card_width = min(content_w, 170 * mm)
+    day_card_x = x_left + ((content_w - day_card_width) / 2)
+
+    def estimate_day_height(day_index: int, day: dict[str, object], total_arrows: int) -> float:
+        card_inner_w = day_card_width - (12 * mm)
+        text_w = card_inner_w - 22 * mm
+        height = 17 * mm
         items = day["items"]
         if not items:
-            write_line("Sin ejercicios.", x=x_left, size=12, bold=False, step=5.2 * mm)
-        else:
-            for item in items:
-                name = str(item["name"]).strip()
-                arrows = int(item["arrows"])
-                rounds = max(int(item.get("rounds") or 1), 1)
-                arrows_per_round = max(int(item.get("arrows_per_round") or 0), 0)
-                distance = float(item["distance"])
-                description = str(item["description"]).strip()
+            return height + 10 * mm
+        for item in items:
+            name_lines = split_text(str(item["name"]).strip(), font_name="Helvetica-Bold", size=11, max_width=text_w)
+            meta = (
+                f"{max(int(item.get('rounds') or 1), 1)} x "
+                f"{max(int(item.get('arrows_per_round') or 0), 0)} disparos"
+                f"  ·  {format_distance(float(item['distance']))} m"
+                f"  ·  Total {int(item['arrows'])}"
+            )
+            meta_lines = split_text(meta, font_name="Helvetica", size=8, max_width=text_w)
+            description = str(item["description"]).strip()
+            description_lines = split_text(description, font_name="Helvetica", size=9, max_width=text_w) if description else []
+            height += max(15 * mm, (len(name_lines) * 4.3 * mm) + (len(meta_lines) * 3.7 * mm) + (len(description_lines) * 3.8 * mm) + (4 * mm))
+        return height + 8 * mm
 
-                write_wrapped_justify(
-                    (
-                        f"• {name}: {rounds} rondas x {arrows_per_round} disparos - "
-                        f"{format_distance(distance)} metros - {arrows} disparos."
-                    ),
-                    size=12,
-                    leading=5.2 * mm,
-                )
-                if description:
-                    write_wrapped_justify(
-                        description,
-                        size=12,
-                        leading=5.2 * mm,
-                    )
-                y -= 0.5 * mm
+    for idx, day in enumerate(effective_days, start=1):
+        day_total = day_totals[idx - 1]
+        card_height = estimate_day_height(idx, day, day_total)
+        ensure_space(card_height + 2 * mm)
+        draw_round_rect(day_card_x, y, day_card_width, card_height, fill_color=card_fill, stroke_color=card_border, radius=5 * mm)
+        pdf.setFillColor(brand)
+        pdf.roundRect(day_card_x, y - card_height, 5 * mm, card_height, 5 * mm, stroke=0, fill=1)
 
-        # Asegura que el total quede debajo del bloque de ejercicios.
-        y -= 0.8 * mm
-        write_line(f"Total Día {idx}: {day_totals[idx - 1]} disparos", size=12, bold=True, step=5.6 * mm)
+        day_top_y = y - 6 * mm
+        draw_text(str(day.get("label") or f"Día {idx}"), day_card_x + 9 * mm, day_top_y, font_name="Helvetica-Bold", size=13, color=text_primary)
+        draw_round_rect(day_card_x + day_card_width - 35 * mm, y - 4 * mm, 29 * mm, 8.5 * mm, fill_color=soft_orange, stroke_color=soft_orange, radius=3 * mm, stroke_width=0)
+        draw_text(f"{day_total} disparos", day_card_x + day_card_width - 31 * mm, y - 9.2 * mm, font_name="Helvetica-Bold", size=8, color=brand_dark)
+
+        cursor_y = y - 16 * mm
+        items = day["items"]
+        if not items:
+            draw_text("Sin ejercicios programados.", day_card_x + 9 * mm, cursor_y, font_name="Helvetica", size=10, color=text_secondary)
+            y -= card_height + 4 * mm
+            continue
+
+        for item_index, item in enumerate(items, start=1):
+            name = str(item["name"]).strip()
+            arrows = int(item["arrows"])
+            rounds = max(int(item.get("rounds") or 1), 1)
+            arrows_per_round = max(int(item.get("arrows_per_round") or 0), 0)
+            distance = float(item["distance"])
+            description = str(item["description"]).strip()
+
+            badge_size = 7.5 * mm
+            badge_x = day_card_x + 9 * mm
+            badge_y = cursor_y + 1.5 * mm
+            draw_round_rect(badge_x, badge_y, badge_size, badge_size, fill_color=soft_fill, stroke_color=soft_fill, radius=2.2 * mm, stroke_width=0)
+            draw_text(str(item_index), badge_x + 2.35 * mm, badge_y - 5 * mm, font_name="Helvetica-Bold", size=8, color=brand_dark)
+
+            text_x = badge_x + badge_size + 4 * mm
+            text_w = (day_card_x + day_card_width) - (text_x + 5 * mm)
+            name_lines = split_text(name, font_name="Helvetica-Bold", size=11, max_width=text_w)
+            meta = (
+                f"{rounds} rondas x {arrows_per_round} disparos  ·  "
+                f"{format_distance(distance)} m  ·  Total {arrows}"
+            )
+            meta_lines = split_text(meta, font_name="Helvetica", size=9, max_width=text_w)
+            desc_lines = split_text(description, font_name="Helvetica", size=9, max_width=text_w) if description else []
+
+            line_y = cursor_y
+            for line in name_lines:
+                draw_text(line, text_x, line_y, font_name="Helvetica-Bold", size=11, color=text_primary)
+                line_y -= 4.2 * mm
+            for line in meta_lines:
+                draw_text(line, text_x, line_y, font_name="Helvetica", size=9, color=text_muted)
+                line_y -= 4.2 * mm
+            for line in desc_lines:
+                draw_text(line, text_x, line_y, font_name="Helvetica", size=9, color=text_secondary)
+                line_y -= 3.9 * mm
+
+            cursor_y = min(line_y, cursor_y - 15 * mm)
+            if item_index < len(items):
+                pdf.setStrokeColor(card_border)
+                pdf.setLineWidth(0.8)
+                pdf.line(day_card_x + 9 * mm, cursor_y + 2 * mm, day_card_x + day_card_width - 5 * mm, cursor_y + 2 * mm)
+                cursor_y -= 4 * mm
+
+        y -= card_height + 4 * mm
+
+    draw_footer()
 
     pdf.save()
     pdf_bytes = buffer.getvalue()
